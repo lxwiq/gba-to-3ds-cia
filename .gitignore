@@ -1,0 +1,11 @@
+/target
+/web/pkg
+/dist
+*.cia
+*.gba
+*.sav
+*.bps
+*.ups
+*.ips
+!crates/core/tests/data/**
+.DS_Store

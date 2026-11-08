@@ -1,0 +1,13 @@
+[package]
+name = "gba2cia-core"
+description = "Build Nintendo 3DS GBA Virtual Console CIA files from GBA ROMs (no external tools)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sha2 = "0.10"
+crc32fast = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
+thiserror = "2"

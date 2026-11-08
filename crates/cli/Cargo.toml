@@ -1,0 +1,15 @@
+[package]
+name = "gba2cia"
+description = "Command-line tool: turn a GBA ROM into an installable Nintendo 3DS .cia (Virtual Console or dual-screen)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "gba2cia"
+path = "src/main.rs"
+
+[dependencies]
+gba2cia-core.workspace = true
+clap = { version = "4", features = ["derive"] }

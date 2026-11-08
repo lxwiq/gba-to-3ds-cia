@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Turn a Game Boy Advance ROM into an installable Nintendo 3DS title. Everything runs in your browser: your files are never uploaded.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>GBA to 3DS CIA</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="site wrap">
+    <h1>GBA to 3DS CIA</h1>
+    <p class="tagline">Turn a Game Boy Advance ROM into an installable 3DS title. Everything runs in your browser: your files are never uploaded.</p>
+  </header>
+
+  <main class="wrap" id="main">
+    <noscript>
+      <div class="msg error"><p>This page needs JavaScript: the converter runs in your browser.</p></div>
+    </noscript>
+    <p class="boot" id="boot">Loading the converter. If this message stays, open the page through a web server in a current browser.</p>
+    <div id="app-error" role="alert"></div>
+
+    <!-- 1. Game -->
+    <section class="card" aria-labelledby="game-h">
+      <h2 id="game-h"><span class="step" aria-hidden="true">1</span>Game</h2>
+
+      <div class="drop" id="rom-picker">
+        <input type="file" id="rom-file" class="visually-hidden" accept=".gba,.agb,.bin">
+        <label for="rom-file" class="drop-label">
+          <span class="drop-title" data-name>Choose a ROM file</span>
+          <span class="drop-sub" data-sub>or drop it here: .gba, .agb or .bin</span>
+        </label>
+      </div>
+      <p class="status" id="rom-status" role="status"></p>
+      <div id="rom-error" role="alert"></div>
+
+      <div class="subsection">
+        <h3 id="patch-h">Apply a patch (ROM hack) <span class="optional">optional</span></h3>
+        <p class="hint" id="patch-desc">IPS, UPS or BPS. The patch is applied to the ROM above when you build; your files are not changed.</p>
+        <div class="file" id="patch-picker">
+          <input type="file" id="patch-file" class="visually-hidden" accept=".ips,.ups,.bps" aria-labelledby="patch-h" aria-describedby="patch-name patch-desc">
+          <label for="patch-file" class="button secondary">Choose patch</label>
+          <span class="file-name" id="patch-name" data-name>No patch chosen</span>
+          <button type="button" class="link" data-clear aria-label="Remove the patch" hidden>Remove</button>
+        </div>
+        <div id="patch-error" role="alert"></div>
+        <div id="patch-info" hidden></div>
+        <div id="patch-check" role="status"></div>
+        <p class="note">Pokemon Unbound: use the official 'Pokemon Unbound Official.ups' with a clean Pokemon FireRed (USA) v1.0 ROM, CRC32 DD88761C.</p>
+      </div>
+
+      <div id="rom-info" class="detected" hidden></div>
+    </section>
+
+    <!-- 2. Output -->
+    <section class="card" aria-labelledby="output-h">
+      <h2 id="output-h"><span class="step" aria-hidden="true">2</span>Output</h2>
+      <fieldset class="choices">
+        <legend class="visually-hidden">Output type</legend>
+        <div class="choice">
+          <input type="radio" name="mode" id="mode-vc" value="vc" checked aria-describedby="mode-vc-desc mode-vc-tip">
+          <div class="choice-body">
+            <label for="mode-vc" class="choice-title">Virtual Console</label>
+            <p class="choice-desc" id="mode-vc-desc">Runs on the console's built-in GBA hardware. Exact speed and sound on every 3DS and 2DS. The bottom screen stays off.</p>
+            <p class="choice-tip" id="mode-vc-tip">Hold <kbd>START</kbd> or <kbd>SELECT</kbd> while the game starts to choose between the smoothed full-height picture and the sharp original-size picture.</p>
+            <div class="field compact">
+              <label for="colour" class="label">Colours</label>
+              <select id="colour">
+                <option value="vivid" selected>Vivid, like an emulator (default)</option>
+                <option value="original">Original GBA screen: dimmer, with LCD ghosting, as in Nintendo's Virtual Console titles</option>
+              </select>
+            </div>
+            <p class="choice-tip">If you installed an older build of the same game made with another tool, delete that title and its save data first (FBI: Titles, select it, Delete Title and Delete Save Data), because the save container size is set at installation.</p>
+          </div>
+        </div>
+        <div class="choice is-disabled">
+          <input type="radio" name="mode" id="mode-dual" value="dual" disabled aria-describedby="mode-dual-soon mode-dual-desc">
+          <div class="choice-body">
+            <label for="mode-dual" class="choice-title">Dual screen <span class="badge" id="mode-dual-soon">Coming soon</span></label>
+            <p class="choice-desc" id="mode-dual-desc">Game on the top screen, touch panel on the bottom screen. Runs in an emulator.</p>
+          </div>
+        </div>
+      </fieldset>
+    </section>
+
+    <!-- 3. HOME Menu -->
+    <section class="card" aria-labelledby="menu-h">
+      <h2 id="menu-h"><span class="step" aria-hidden="true">3</span>HOME Menu</h2>
+      <p class="lead">How the title looks on the console's HOME Menu.</p>
+
+      <div class="field">
+        <label for="title" class="label">Title</label>
+        <input type="text" id="title" maxlength="64" autocomplete="off" spellcheck="false" aria-describedby="title-hint">
+        <p class="hint" id="title-hint">Up to 64 characters. Filled in from the file name; change it freely.</p>
+      </div>
+
+      <div class="field">
+        <label for="publisher" class="label">Publisher <span class="optional">optional</span></label>
+        <input type="text" id="publisher" maxlength="64" autocomplete="off" spellcheck="false" placeholder="GBA" aria-describedby="publisher-hint">
+        <p class="hint" id="publisher-hint">Leave empty to show GBA.</p>
+      </div>
+
+      <div class="field">
+        <span class="label" id="icon-label">Icon image <span class="optional">optional</span></span>
+        <div class="file" id="icon-picker">
+          <input type="file" id="icon-file" class="visually-hidden" accept="image/png,image/jpeg,image/gif,image/bmp,image/webp,.png,.jpg,.jpeg,.gif,.bmp,.webp" aria-labelledby="icon-label" aria-describedby="icon-name icon-hint">
+          <label for="icon-file" class="button secondary">Choose image</label>
+          <span class="file-name" id="icon-name" data-name>No image chosen</span>
+          <button type="button" class="link" data-clear aria-label="Remove the icon image" hidden>Remove</button>
+        </div>
+        <div class="preview" id="icon-box" hidden>
+          <img id="icon-preview" class="preview-icon" width="48" height="48" alt="Icon preview">
+        </div>
+        <p class="hint" id="icon-hint">A plain default is generated.</p>
+      </div>
+
+      <div class="field">
+        <span class="label" id="banner-label">Banner image <span class="optional">optional</span></span>
+        <div class="file" id="banner-picker">
+          <input type="file" id="banner-file" class="visually-hidden" accept="image/png,image/jpeg,image/gif,image/bmp,image/webp,.png,.jpg,.jpeg,.gif,.bmp,.webp" aria-labelledby="banner-label" aria-describedby="banner-name banner-hint">
+          <label for="banner-file" class="button secondary">Choose image</label>
+          <span class="file-name" id="banner-name" data-name>No image chosen</span>
+          <button type="button" class="link" data-clear aria-label="Remove the banner image" hidden>Remove</button>
+        </div>
+        <div class="preview" id="banner-box" hidden>
+          <img id="banner-preview" class="preview-banner" width="256" height="128" alt="Banner preview">
+        </div>
+        <p class="hint" id="banner-hint">A plain default is generated.</p>
+      </div>
+
+      <div class="field">
+        <span class="label" id="sound-label">Banner sound <span class="optional">optional</span></span>
+        <div class="file" id="sound-picker">
+          <input type="file" id="sound-file" class="visually-hidden" accept=".wav,audio/wav,audio/x-wav,audio/wave" aria-labelledby="sound-label" aria-describedby="sound-name sound-hint">
+          <label for="sound-file" class="button secondary">Choose WAV</label>
+          <span class="file-name" id="sound-name" data-name>No sound chosen</span>
+          <button type="button" class="link" data-clear aria-label="Remove the banner sound" hidden>Remove</button>
+        </div>
+        <audio id="sound-preview" class="preview-sound" controls preload="metadata" hidden></audio>
+        <p class="hint" id="sound-hint">Played when the title is selected. WAV file; only the first 3 seconds are used. Without one the banner is silent.</p>
+      </div>
+    </section>
+
+    <!-- 4. Advanced -->
+    <details class="card" id="advanced">
+      <summary><h2><span class="step" aria-hidden="true">4</span>Advanced</h2></summary>
+      <p class="lead">The automatic settings suit almost every game.</p>
+
+      <div class="field">
+        <label for="save-type" class="label">Save type</label>
+        <select id="save-type" aria-describedby="save-type-hint">
+          <option value="auto">Auto (detect from the ROM)</option>
+        </select>
+        <p class="hint" id="save-type-hint">Change it only if the game does not save. The wrong type makes saving fail.</p>
+      </div>
+
+      <div class="field">
+        <label for="rtc" class="label">Real-time clock</label>
+        <select id="rtc" aria-describedby="rtc-hint">
+          <option value="auto">Auto (detect from the ROM)</option>
+          <option value="on">On</option>
+          <option value="off">Off</option>
+        </select>
+        <p class="hint" id="rtc-hint">Needed by Pokemon Ruby, Sapphire, Emerald and hacks such as Unbound.</p>
+      </div>
+
+      <div class="field">
+        <label for="title-id" class="label">Title ID <span class="optional">optional</span></label>
+        <input type="text" id="title-id" class="mono" maxlength="24" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="Derived from the game" aria-describedby="title-id-hint">
+        <p class="hint" id="title-id-hint">16 hexadecimal digits, for example 0004000000F12300. By default the title ID is derived from the game code and the title, so rebuilding the same game with the same title updates the installed title and keeps its save. Changing the title gives a new title ID.</p>
+      </div>
+    </details>
+
+    <!-- Build -->
+    <section class="card build" id="build-card" aria-labelledby="build-h">
+      <h2 id="build-h" class="visually-hidden">Build</h2>
+      <button type="button" class="button primary large" id="build">Build .cia</button>
+      <p class="status" id="build-status" role="status"></p>
+      <div id="build-error" role="alert"></div>
+      <div id="build-result" class="result" hidden></div>
+
+      <h3>Install on the console</h3>
+      <p>Copy the .cia to your SD card, open FBI, choose SD, select the file and Install CIA. Requires a console with custom firmware (Luma3DS).</p>
+    </section>
+
+    <!-- 5. Import an emulator save -->
+    <section class="card" aria-labelledby="save-h">
+      <h2 id="save-h"><span class="step" aria-hidden="true">5</span>Import an emulator save</h2>
+      <p class="lead">Continue a game started in an emulator. The save is converted here, then injected on the console with GodMode9. This is separate from the build.</p>
+
+      <div class="field">
+        <span class="label" id="sav-label">Emulator save</span>
+        <div class="file" id="sav-picker">
+          <input type="file" id="sav-file" class="visually-hidden" accept=".sav,.srm" aria-labelledby="sav-label" aria-describedby="sav-name sav-desc">
+          <label for="sav-file" class="button secondary">Choose save</label>
+          <span class="file-name" id="sav-name" data-name>No save chosen</span>
+          <button type="button" class="link" data-clear aria-label="Remove the save file" hidden>Remove</button>
+        </div>
+        <p class="hint" id="sav-desc">A .sav or .srm file from mGBA, VisualBoyAdvance, RetroArch or a similar emulator.</p>
+      </div>
+
+      <div class="field">
+        <label for="sav-kind" class="label">Save type</label>
+        <select id="sav-kind" aria-describedby="sav-kind-hint">
+          <option value="auto">Auto (from file size)</option>
+        </select>
+        <p class="hint" id="sav-kind-hint">Auto picks the type from the file size. It must match the game.</p>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="button secondary" id="convert">Convert</button>
+      </div>
+      <p class="status" id="sav-status" role="status"></p>
+      <div id="sav-error" role="alert"></div>
+      <div id="sav-result" class="result" hidden></div>
+
+      <h3>Inject the save with GodMode9</h3>
+      <ol class="steps">
+        <li>Install the .cia, start the game once, save in game, then quit with HOME.</li>
+        <li>Copy the converted .sav to the SD card.</li>
+        <li>Hold <kbd>START</kbd> while powering on to open GodMode9 (do not let the HOME Menu start first).</li>
+        <li>In GodMode9 select the .sav file and press <kbd>Y</kbd> to copy it.</li>
+        <li>Open [S:] SYSNAND VIRTUAL, select <code>agbsave.bin</code>, choose "AGBSAVE options..." then "Inject GBA VC save" and confirm.</li>
+        <li>Restart normally and start the game: your save is loaded.</li>
+      </ol>
+      <p class="note">Checkpoint 4.0 or newer can also restore GBA VC saves after the game has saved once.</p>
+      <p class="note">FBI shows error C8A04555 when browsing the save data of any GBA Virtual Console title. This is normal.</p>
+    </section>
+  </main>
+
+  <footer class="site wrap">
+    <p><a href="https://github.com/lxwiq/gba-to-3ds-cia">gba-to-3ds-cia on GitHub</a></p>
+    <p>No ROMs are included. Use dumps of games you own.</p>
+  </footer>
+</body>
+</html>
