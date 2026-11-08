@@ -102,6 +102,12 @@ enum Command {
         /// Save file to bundle (dual screen mode only; for VC see `gba2cia save`).
         #[arg(long)]
         sav: Option<PathBuf>,
+        /// Write the bare NCCH (.cxi) instead of a CIA (boots directly in emulators).
+        #[arg(long, hide = true)]
+        cxi: bool,
+        /// Dual screen test script: scripted input and screenshots.
+        #[arg(long, hide = true)]
+        test_script: Option<String>,
     },
     /// Show what the tool detects in a ROM.
     Info { rom: PathBuf },
@@ -236,6 +242,8 @@ fn run() -> Result<(), String> {
             colour,
             scale,
             sav,
+            cxi,
+            test_script,
         } => {
             let mut data = read(&rom)?;
             if let Some(p) = &p {
@@ -280,11 +288,13 @@ fn run() -> Result<(), String> {
                     ColourArg::Original => Colour::Original,
                 },
                 initial_save: sav.as_deref().map(read).transpose()?,
+                test_script,
+                output_cxi: cxi,
             };
             let out = build::build(&data, &opts).map_err(|e| e.to_string())?;
             let output = output.unwrap_or_else(|| {
                 let mut o = p.as_ref().unwrap_or(&rom).clone();
-                o.set_extension("cia");
+                o.set_extension(if cxi { "cxi" } else { "cia" });
                 o
             });
             write(&output, &out.cia)?;

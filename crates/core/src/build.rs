@@ -49,6 +49,10 @@ pub struct BuildOptions {
     pub colour: Colour,
     /// Dual screen mode: save file installed on first launch.
     pub initial_save: Option<Vec<u8>>,
+    /// Dual screen mode: scripted input and screenshots (emulator testing).
+    pub test_script: Option<String>,
+    /// Write the bare NCCH (.cxi, bootable in emulators) instead of a CIA.
+    pub output_cxi: bool,
 }
 
 impl Default for BuildOptions {
@@ -66,12 +70,15 @@ impl Default for BuildOptions {
             scale: ScreenScale::Full,
             colour: Colour::Vivid,
             initial_save: None,
+            test_script: None,
+            output_cxi: false,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct BuildOutput {
+    /// The output file: a CIA, or the bare NCCH when `output_cxi` is set.
     pub cia: Vec<u8>,
     pub rom: RomInfo,
     pub title_id: u64,
@@ -151,9 +158,16 @@ pub fn build(rom: &[u8], opts: &BuildOptions) -> Result<BuildOutput, Error> {
             title_id::validate(t)?;
             t
         }
-        None => title_id::derive(&info.game_code, &title),
+        None => match opts.mode {
+            Mode::VirtualConsole => title_id::derive(&info.game_code, &title),
+            // A separate ID, so both versions of a game can be installed.
+            Mode::DualScreen => title_id::derive(&info.game_code, &format!("{title}/dual-screen")),
+        },
     };
-    let product_code = title_id::product_code(&info.game_code);
+    let product_code = match opts.mode {
+        Mode::VirtualConsole => title_id::product_code(&info.game_code),
+        Mode::DualScreen => title_id::product_code(&info.game_code).replace("CTR-N-", "CTR-H-"),
+    };
     let seed = format!("{}{}", info.game_code, title);
 
     let mut rom = rom.to_vec();
@@ -229,15 +243,53 @@ pub fn build(rom: &[u8], opts: &BuildOptions) -> Result<BuildOutput, Error> {
             (n, save_size, "Virtual Console (native GBA hardware)")
         }
         Mode::DualScreen => {
-            return Err(Error::Option(
-                "dual screen mode needs the player template, which is not bundled in this build"
-                    .into(),
-            ));
+            let initial = match &opts.initial_save {
+                Some(sav) => {
+                    let n = crate::save::normalize(sav, save)?;
+                    notes.extend(n.notes);
+                    notes.push(
+                        "The save file is installed on the SD card the first time the game starts (an existing save is never overwritten)."
+                            .into(),
+                    );
+                    Some(n.data)
+                }
+                None => None,
+            };
+            let n = crate::dual::build_ncch(
+                &rom,
+                &smdh_bytes,
+                &banner_bytes,
+                &crate::dual::DualOptions {
+                    title: &title,
+                    title_id: tid,
+                    product_code: &product_code,
+                    game_code: &info.game_code,
+                    save,
+                    rtc,
+                    scale: opts.scale,
+                    initial_save: initial.as_deref(),
+                    test_script: opts.test_script.as_deref(),
+                },
+            )?;
+            (n, 0, "Dual screen (mGBA player)")
         }
     };
 
     // Self-check: the NCCH must parse and every hash must verify.
     let view = ncch::parse_ncch(&ncch)?;
+    if opts.output_cxi {
+        return Ok(BuildOutput {
+            cia: ncch,
+            rom: info,
+            title_id: tid,
+            product_code,
+            title,
+            save,
+            rtc,
+            mode_label,
+            notes,
+        });
+    }
     let deps = view.exheader[0x40..0x1C0].to_vec();
     let core_version = u32::from_le_bytes(view.exheader[0x208..0x20C].try_into().unwrap());
 

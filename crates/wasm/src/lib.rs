@@ -157,6 +157,8 @@ pub fn build_cia(
             _ => Colour::Vivid,
         },
         initial_save,
+        test_script: None,
+        output_cxi: false,
     };
     let out = build::build(rom, &opts).map_err(err)?;
     let report = json!({

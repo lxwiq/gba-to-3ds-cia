@@ -9,3 +9,4 @@
 *.ips
 !crates/core/tests/data/**
 .DS_Store
+/player/build

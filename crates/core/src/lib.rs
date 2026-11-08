@@ -8,6 +8,7 @@ pub mod art;
 pub mod banner;
 pub mod build;
 pub mod cia;
+pub mod dual;
 pub mod gba;
 pub mod image_util;
 pub mod ncch;

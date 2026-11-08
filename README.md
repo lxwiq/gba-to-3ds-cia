@@ -169,9 +169,29 @@ LCD ghosting of Nintendo's own Virtual Console titles. Some games use
 flickering sprites that ghosting turns back into the transparency they had
 on a real GBA.
 
-A **dual-screen mode** is in development: the game fills the top screen and
-the bottom screen becomes a touch panel. This mode needs an emulator, because
-AGB_FIRM cannot be extended. See [Roadmap](#roadmap).
+### Dual screen mode (experimental, not yet tested on hardware)
+
+`--mode dual` builds a different kind of title: the gba2cia player, a 3DS
+program built on the mGBA emulator core (`player/`), with the ROM bundled in
+it. It gives up AGB_FIRM's exact hardware for a dual-screen layout:
+
+- the game fills the top screen: 400x240 (`--scale full`), 360x240 (`aspect`)
+  or pixel for pixel (`native`), switchable from the bottom screen;
+- the bottom screen shows the party of Generation III Pokemon games and their
+  hacks (name, level, HP, status) and large touch buttons: START, SELECT,
+  speed-up (1x, 2x, 4x, also on X), quick save and load state, screen size;
+- the real-time clock follows the console clock;
+- the save is a plain emulator `.sav` on the SD card
+  (`sdmc:/3ds/gba2cia/<title id>/game.sav`), and `--sav` bundles a starting
+  save that is installed on first launch.
+
+It runs at full speed on New 3DS and New 2DS XL; older models may slow down
+in demanding scenes. Sound needs the DSP firmware dump that every 3DS
+homebrew needs (Rosalina menu, Miscellaneous options, Dump DSP firmware).
+
+```sh
+gba2cia build firered.gba --patch "Pokemon Unbound Official.ups" --mode dual --sav unbound.sav
+```
 
 ## Console notes
 
@@ -278,16 +298,15 @@ The crate layout:
 | `crates/cli` | the `gba2cia` command |
 | `crates/wasm` | WebAssembly bindings for the web app |
 | `web` | the web app (static files, no build step besides the WebAssembly module) |
+| `player` | the dual screen player (C, libctru, citro2d, mGBA core; `player/build.sh` rebuilds it in Docker) |
 
 Each build parses its own output again and verifies every hash before it is
 written, the same checks the console runs at install and launch.
 
 ## Roadmap
 
-- Dual-screen mode: the game in full screen on top, and a touch panel on the
-  bottom (buttons, speed-up, save states, Pokemon party for Gen 3 engine games).
-  Built on the mGBA core, with the ROM, clock and an optional starting `.sav`
-  bundled in the title.
+- Dual-screen mode: testing in the Azahar emulator and on hardware, then in the
+  web app.
 - Animated banners.
 
 ## Credits

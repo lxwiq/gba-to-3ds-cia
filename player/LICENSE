@@ -1,0 +1,5 @@
+The gba2cia player (this directory, except third_party/) is licensed under the
+Mozilla Public License, version 2.0, like the mGBA core it is built on.
+A copy of the license is available at https://mozilla.org/MPL/2.0/.
+
+third_party/mgba is mGBA by Jeffrey Pfau and contributors, MPL-2.0.
