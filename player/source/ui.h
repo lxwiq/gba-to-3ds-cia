@@ -19,14 +19,24 @@ enum UiAction {
 	UI_SCREEN
 };
 
+enum UiTab {
+	TAB_TEAM = 0,
+	TAB_MAP,
+	TAB_CARD,
+	TAB_TOOLS,
+	TAB_COUNT
+};
+
 struct UiState {
 	const char* title;
+	enum UiTab tab;
 	int speed;               /* 1, 2 or 4 */
 	enum ScaleMode scale;
 	bool pokemon;            /* the game is a Gen III Pokemon game */
 	struct Party party;
 	struct Trainer trainer;
 	bool fromSave;           /* party and trainer come from the save file */
+	struct MapView map;
 	C2D_Image icons[PARTY_MAX];
 	bool iconValid[PARTY_MAX];
 	bool sound;              /* DSP firmware present */
@@ -34,14 +44,14 @@ struct UiState {
 	int toastFrames;
 	bool loadArmed;          /* first tap on LOAD done, waiting for confirmation */
 	int loadArmedFrames;
-	int pressedButton;       /* index of the button drawn pressed, -1 none */
+	int pressed;             /* hit zone drawn pressed, -1 none */
 	int pressedFrames;
 };
 
 void uiInit(void);
 void uiExit(void);
 void uiToast(struct UiState* ui, const char* message);
-/* Map a touch position to an action. */
+/* Map a touch position to an action (tab changes are handled here). */
 enum UiAction uiHitTest(struct UiState* ui, int x, int y);
 /* Draw the bottom screen. Must be called inside a citro2d scene. */
 void uiDraw(struct UiState* ui);

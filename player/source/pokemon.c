@@ -22,17 +22,27 @@ struct PartyLayout {
 	uint32_t party;
 	uint32_t count;
 	uint32_t saveBlock2Ptr; /* address of gSaveBlock2Ptr, 0 if unknown */
+	uint32_t saveBlock1Ptr; /* address of gSaveBlock1Ptr, 0 if unknown */
+	uint32_t mapHeader;     /* address of gMapHeader, 0 if unknown */
+	uint32_t moneyOffset;   /* in SaveBlock1 */
+	uint32_t keyOffset;     /* money encryption key in SaveBlock2 */
+	uint32_t flagsOffset;   /* event flags in SaveBlock1 */
+	uint32_t badgeFlag;     /* first badge flag */
+	uint32_t mapNamesRef;   /* ROM address holding the map name table pointer */
+	uint32_t mapsecBase;    /* first map section of that table */
 };
 
 /* Addresses from the pret decompilations (USA builds). FireRed-based hacks
  * built with Complete FireRed Upgrade (Pokemon Unbound and many others) keep
  * the FireRed addresses. */
 static const struct PartyLayout layouts[] = {
-	{ "BPR", 0x02024284, 0x02024029, 0x0300500C }, /* FireRed */
-	{ "BPG", 0x02024284, 0x02024029, 0x0300500C }, /* LeafGreen */
-	{ "BPE", 0x020244EC, 0x020244E9, 0x03005D90 }, /* Emerald */
-	{ "AXV", 0x03004360, 0x03004350, 0 },          /* Ruby */
-	{ "AXP", 0x03004360, 0x03004350, 0 },          /* Sapphire */
+	/* FireRed / LeafGreen, and hacks built on them. The map name table
+	 * pointer sits in a literal pool that hacks such as Unbound keep. */
+	{ "BPR", 0x02024284, 0x02024029, 0x0300500C, 0x03005008, 0x02036DFC, 0x290, 0xF20, 0xEE0, 0x820, 0x080C0C94, 0x58 },
+	{ "BPG", 0x02024284, 0x02024029, 0x0300500C, 0x03005008, 0x02036DFC, 0x290, 0xF20, 0xEE0, 0x820, 0x080C0C94, 0x58 },
+	{ "BPE", 0x020244EC, 0x020244E9, 0x03005D90, 0x03005D8C, 0x02037318, 0x490, 0xAC, 0x1270, 0x867, 0, 0 },
+	{ "AXV", 0x03004360, 0x03004350, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ "AXP", 0x03004360, 0x03004350, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 };
 
 static const struct PartyLayout* findLayout(const char* gameCode) {
@@ -226,7 +236,103 @@ void pokemonReadTrainer(struct mCore* core, const char* gameCode, struct Trainer
 	decodeName(raw, 8, t->name, sizeof(t->name));
 	t->hours = core->rawRead16(core, sb2 + 0x0E, -1);
 	t->minutes = core->rawRead8(core, sb2 + 0x10, -1);
+	t->id = core->rawRead16(core, sb2 + 0x0A, -1);
 	t->valid = t->name[0] && t->hours < 1000 && t->minutes < 60;
+	uint32_t sb1 = layout->saveBlock1Ptr ? rd32(core, layout->saveBlock1Ptr) : 0;
+	if (sb1 >= 0x02000000 && sb1 < 0x02040000 && layout->moneyOffset) {
+		uint32_t money = rd32(core, sb1 + layout->moneyOffset) ^ rd32(core, sb2 + layout->keyOffset);
+		if (money <= 999999) {
+			t->money = money;
+			t->hasMoney = true;
+		}
+		t->badges = core->rawRead8(core, sb1 + layout->flagsOffset + layout->badgeFlag / 8, -1);
+		t->hasBadges = true;
+	}
+}
+
+static void mapName(struct mCore* core, const struct PartyLayout* layout, unsigned mapsec, char* out, size_t outSize) {
+	out[0] = 0;
+	if (!layout->mapNamesRef || mapsec < layout->mapsecBase) {
+		return;
+	}
+	uint32_t table = rd32(core, layout->mapNamesRef);
+	if (!romPointer(table)) {
+		return;
+	}
+	uint32_t entry = rd32(core, table + (mapsec - layout->mapsecBase) * 4);
+	if (!romPointer(entry)) {
+		return;
+	}
+	uint8_t raw[24];
+	for (int i = 0; i < 24; ++i) {
+		raw[i] = core->rawRead8(core, entry + i, -1);
+	}
+	decodeName(raw, sizeof(raw), out, outSize);
+}
+
+void pokemonReadMap(struct mCore* core, const char* gameCode, struct MapView* map) {
+	memset(map, 0, sizeof(*map));
+	const struct PartyLayout* layout = findLayout(gameCode);
+	if (!layout || !layout->mapHeader || !layout->saveBlock1Ptr) {
+		return;
+	}
+	uint32_t sb1 = rd32(core, layout->saveBlock1Ptr);
+	uint32_t mapLayout = rd32(core, layout->mapHeader);
+	if (sb1 < 0x02000000 || sb1 >= 0x02040000 || !romPointer(mapLayout)) {
+		return;
+	}
+	int width = (int) rd32(core, mapLayout);
+	int height = (int) rd32(core, mapLayout + 4);
+	uint32_t blocks = rd32(core, mapLayout + 12);
+	if (width <= 0 || height <= 0 || width > 512 || height > 512 || !romPointer(blocks)) {
+		return;
+	}
+	int px = (int16_t) core->rawRead16(core, sb1, -1);
+	int py = (int16_t) core->rawRead16(core, sb1 + 2, -1);
+	if (px < 0 || py < 0 || px >= width || py >= height) {
+		return;
+	}
+	map->width = width;
+	map->height = height;
+	map->px = px;
+	map->py = py;
+	map->originX = px - MAP_VIEW_W / 2;
+	map->originY = py - MAP_VIEW_H / 2;
+	for (int y = 0; y < MAP_VIEW_H; ++y) {
+		for (int x = 0; x < MAP_VIEW_W; ++x) {
+			int mx = map->originX + x, my = map->originY + y;
+			if (mx < 0 || my < 0 || mx >= width || my >= height) {
+				map->cell[y][x] = CELL_OUTSIDE;
+				continue;
+			}
+			uint16_t b = core->rawRead16(core, blocks + (my * width + mx) * 2, -1);
+			map->cell[y][x] = (b & 0x0C00) ? CELL_WALL : CELL_FLOOR;
+		}
+	}
+	/* Warps (doors, stairs) and people from the map events. */
+	uint32_t events = rd32(core, layout->mapHeader + 4);
+	if (romPointer(events)) {
+		unsigned objects = core->rawRead8(core, events, -1);
+		unsigned warps = core->rawRead8(core, events + 1, -1);
+		uint32_t objectList = rd32(core, events + 4);
+		uint32_t warpList = rd32(core, events + 8);
+		for (unsigned i = 0; i < warps && i < 64 && romPointer(warpList); ++i) {
+			int wx = (int16_t) core->rawRead16(core, warpList + i * 8, -1) - map->originX;
+			int wy = (int16_t) core->rawRead16(core, warpList + i * 8 + 2, -1) - map->originY;
+			if (wx >= 0 && wy >= 0 && wx < MAP_VIEW_W && wy < MAP_VIEW_H) {
+				map->cell[wy][wx] = CELL_WARP;
+			}
+		}
+		for (unsigned i = 0; i < objects && i < 64 && romPointer(objectList); ++i) {
+			int ox = (int16_t) core->rawRead16(core, objectList + i * 24 + 4, -1) - map->originX;
+			int oy = (int16_t) core->rawRead16(core, objectList + i * 24 + 6, -1) - map->originY;
+			if (ox >= 0 && oy >= 0 && ox < MAP_VIEW_W && oy < MAP_VIEW_H && map->cell[oy][ox] != CELL_WARP) {
+				map->cell[oy][ox] = CELL_PERSON;
+			}
+		}
+	}
+	mapName(core, layout, core->rawRead8(core, layout->mapHeader + 0x14, -1), map->name, sizeof(map->name));
+	map->valid = true;
 }
 
 /* Decode one 100-byte party structure. Returns false when the values do not
@@ -366,7 +472,28 @@ bool pokemonReadSave(struct mCore* core, const char* gameCode, const uint8_t* sa
 		decodeName(s0, 8, trainer->name, sizeof(trainer->name));
 		trainer->hours = read16(&s0[0x0E]);
 		trainer->minutes = s0[0x10];
+		trainer->id = read16(&s0[0x0A]);
 		trainer->valid = trainer->name[0] && trainer->hours < 1000 && trainer->minutes < 60;
+	}
+	/* SaveBlock1 is split over sections 1 to 4 (0xF80 bytes each). */
+	const struct PartyLayout* layout = findLayout(gameCode);
+	if (s0 && s1 && layout->moneyOffset && layout->moneyOffset < 0xF80 - 4 && layout->keyOffset < 0xF80 - 4) {
+		uint32_t money = read32(&s1[layout->moneyOffset]) ^ read32(&s0[layout->keyOffset]);
+		if (money <= 999999) {
+			trainer->money = money;
+			trainer->hasMoney = true;
+		}
+	}
+	if (layout->flagsOffset) {
+		uint32_t at = layout->flagsOffset + layout->badgeFlag / 8;
+		unsigned sectionId = 1 + at / 0xF80;
+		for (int i = 0; i < 14 && sectionId <= 4; ++i) {
+			const uint8_t* sec = sav + best * 0xE000 + i * 0x1000;
+			if (read16(&sec[0xFF4]) == sectionId) {
+				trainer->badges = sec[at % 0xF80];
+				trainer->hasBadges = true;
+			}
+		}
 	}
 	if (!s1) {
 		return trainer->valid;

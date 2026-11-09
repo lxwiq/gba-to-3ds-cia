@@ -701,7 +701,8 @@ int main(void) {
 	ui.title = cfg.title;
 	ui.speed = 1;
 	ui.scale = cfg.scale;
-	ui.pressedButton = -1;
+	ui.pressed = -1;
+	ui.tab = TAB_TEAM;
 	ui.sound = hasSound;
 	ui.pokemon = pokemonSupported(cfg.gameCode);
 
@@ -862,6 +863,7 @@ int main(void) {
 				ui.fromSave = saveParty.valid || saveTrainer.valid;
 			}
 			iconsUpdate();
+			pokemonReadMap(core, cfg.gameCode, &ui.map);
 		}
 
 		uploadFrame();

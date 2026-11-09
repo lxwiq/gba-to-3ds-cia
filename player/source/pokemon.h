@@ -42,7 +42,29 @@ struct Trainer {
 	char name[32];
 	unsigned hours;
 	unsigned minutes;
+	unsigned id;        /* public trainer ID */
+	bool hasMoney;
+	unsigned money;
+	bool hasBadges;
+	uint8_t badges;     /* bit mask, 8 badges */
 };
+
+/* Schematic view of the current map around the player, built from the
+ * map's collision data (no game graphics). */
+#define MAP_VIEW_W 52
+#define MAP_VIEW_H 22
+enum MapCell { CELL_OUTSIDE = 0, CELL_FLOOR, CELL_WALL, CELL_WARP, CELL_PERSON };
+struct MapView {
+	bool valid;
+	char name[40];
+	int px, py;             /* player position in the map */
+	int width, height;      /* map size */
+	int originX, originY;   /* map coordinates of cell (0, 0) */
+	uint8_t cell[MAP_VIEW_H][MAP_VIEW_W];
+};
+
+/* Live map around the player (FireRed/LeafGreen engine). */
+void pokemonReadMap(struct mCore* core, const char* gameCode, struct MapView* map);
 
 /* Player name and play time from SaveBlock2 (FireRed/LeafGreen/Emerald engine). */
 void pokemonReadTrainer(struct mCore* core, const char* gameCode, struct Trainer* trainer);
