@@ -21,17 +21,18 @@ struct PartyLayout {
 	const char* code3;
 	uint32_t party;
 	uint32_t count;
+	uint32_t saveBlock2Ptr; /* address of gSaveBlock2Ptr, 0 if unknown */
 };
 
 /* Addresses from the pret decompilations (USA builds). FireRed-based hacks
  * built with Complete FireRed Upgrade (Pokemon Unbound and many others) keep
  * the FireRed addresses. */
 static const struct PartyLayout layouts[] = {
-	{ "BPR", 0x02024284, 0x02024029 }, /* FireRed */
-	{ "BPG", 0x02024284, 0x02024029 }, /* LeafGreen */
-	{ "BPE", 0x020244EC, 0x020244E9 }, /* Emerald */
-	{ "AXV", 0x03004360, 0x03004350 }, /* Ruby */
-	{ "AXP", 0x03004360, 0x03004350 }, /* Sapphire */
+	{ "BPR", 0x02024284, 0x02024029, 0x0300500C }, /* FireRed */
+	{ "BPG", 0x02024284, 0x02024029, 0x0300500C }, /* LeafGreen */
+	{ "BPE", 0x020244EC, 0x020244E9, 0x03005D90 }, /* Emerald */
+	{ "AXV", 0x03004360, 0x03004350, 0 },          /* Ruby */
+	{ "AXP", 0x03004360, 0x03004350, 0 },          /* Sapphire */
 };
 
 static const struct PartyLayout* findLayout(const char* gameCode) {
@@ -142,6 +143,92 @@ static uint16_t read16(const uint8_t* p) {
 	return p[0] | (p[1] << 8);
 }
 
+
+/* ---- Game Freak ROM header (0x08000100): tables shared by every Gen III
+ * game and kept up to date by ROM hack tools when they move the data. */
+#define GF_MON_ICONS 0x08000138
+#define GF_MON_ICON_PALETTE_IDS 0x0800013C
+#define GF_MON_ICON_PALETTES 0x08000140
+#define GF_MON_SPECIES_NAMES 0x08000144
+#define SPECIES_MAX 2048
+
+static bool romPointer(uint32_t p) {
+	return p >= 0x08000000 && p < 0x0A000000;
+}
+
+static uint32_t rd32(struct mCore* core, uint32_t addr) {
+	return core->rawRead32(core, addr, -1);
+}
+
+static void speciesName(struct mCore* core, uint16_t species, char* out, size_t outSize) {
+	out[0] = 0;
+	uint32_t table = rd32(core, GF_MON_SPECIES_NAMES);
+	if (!romPointer(table) || species >= SPECIES_MAX) {
+		return;
+	}
+	uint8_t raw[11];
+	for (int i = 0; i < 11; ++i) {
+		raw[i] = core->rawRead8(core, table + species * 11 + i, -1);
+	}
+	decodeName(raw, 11, out, outSize);
+}
+
+bool pokemonIcon(struct mCore* core, uint16_t species, uint32_t* rgba) {
+	uint32_t icons = rd32(core, GF_MON_ICONS);
+	uint32_t ids = rd32(core, GF_MON_ICON_PALETTE_IDS);
+	uint32_t pals = rd32(core, GF_MON_ICON_PALETTES);
+	if (!romPointer(icons) || !romPointer(ids) || !romPointer(pals) || species >= SPECIES_MAX) {
+		return false;
+	}
+	uint32_t gfx = rd32(core, icons + species * 4);
+	uint8_t palId = core->rawRead8(core, ids + species, -1);
+	uint32_t pal = rd32(core, pals + palId * 8);
+	if (!romPointer(gfx) || !romPointer(pal) || palId > 16) {
+		return false;
+	}
+	uint32_t colors[16];
+	for (int i = 0; i < 16; ++i) {
+		uint16_t c = core->rawRead16(core, pal + i * 2, -1);
+		uint32_t r = (c & 0x1F) << 3, g = ((c >> 5) & 0x1F) << 3, b = ((c >> 10) & 0x1F) << 3;
+		colors[i] = (r << 24) | (g << 16) | (b << 8) | (i ? 0xFF : 0x00);
+	}
+	/* 4x4 tiles of 8x8 pixels, 4 bits per pixel, low nibble first. */
+	for (int t = 0; t < 16; ++t) {
+		int tx = (t & 3) * 8, ty = (t >> 2) * 8;
+		for (int y = 0; y < 8; ++y) {
+			for (int x = 0; x < 8; x += 2) {
+				uint8_t b = core->rawRead8(core, gfx + t * 32 + y * 4 + x / 2, -1);
+				rgba[(ty + y) * 32 + tx + x] = colors[b & 0xF];
+				rgba[(ty + y) * 32 + tx + x + 1] = colors[b >> 4];
+			}
+		}
+	}
+	return true;
+}
+
+void pokemonReadTrainer(struct mCore* core, const char* gameCode, struct Trainer* t) {
+	memset(t, 0, sizeof(*t));
+	const struct PartyLayout* layout = findLayout(gameCode);
+	if (!layout || !layout->saveBlock2Ptr) {
+		return;
+	}
+	uint32_t sb2 = rd32(core, layout->saveBlock2Ptr);
+	if (sb2 < 0x02000000 || sb2 >= 0x02040000) {
+		return;
+	}
+	uint8_t raw[8];
+	for (int i = 0; i < 8; ++i) {
+		raw[i] = core->rawRead8(core, sb2 + i, -1);
+	}
+	if (raw[0] == 0xFF || raw[0] == 0x00) {
+		return; /* no name yet (new game not started) */
+	}
+	decodeName(raw, 8, t->name, sizeof(t->name));
+	t->hours = core->rawRead16(core, sb2 + 0x0E, -1);
+	t->minutes = core->rawRead8(core, sb2 + 0x10, -1);
+	t->valid = t->name[0] && t->hours < 1000 && t->minutes < 60;
+}
+
 void pokemonReadParty(struct mCore* core, const char* gameCode, struct Party* party) {
 	memset(party, 0, sizeof(*party));
 	const struct PartyLayout* layout = findLayout(gameCode);
@@ -191,6 +278,7 @@ void pokemonReadParty(struct mCore* core, const char* gameCode, struct Party* pa
 			snprintf(m->name, sizeof(m->name), "Egg");
 		} else {
 			decodeName(&raw[0x08], 10, m->name, sizeof(m->name));
+			speciesName(core, m->species, m->speciesName, sizeof(m->speciesName));
 		}
 	}
 	party->count = count;

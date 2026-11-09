@@ -11,7 +11,12 @@
  *
  * Files on the SD card:
  *   sdmc:/3ds/gba2cia/<title id>/game.sav     the save, raw GBA format
+ *   sdmc:/3ds/gba2cia/<title id>/game.sav.bak the save as it was at the last launch
  *   sdmc:/3ds/gba2cia/<title id>/state.ss0    quick save state
+ *
+ * On the first launch, a save from another emulator found on the SD card
+ * (file name containing the game title, right size) is copied in; the
+ * original file is left untouched.
  */
 #include <3ds.h>
 #include <citro2d.h>
@@ -28,6 +33,8 @@
 #include <mgba/internal/gba/savedata.h>
 #include <mgba-util/vfs.h>
 
+#include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,6 +59,12 @@ static C3D_Tex gameTex;
 static Tex3DS_SubTexture gameSub = { 240, 160, 0.0f, 1.0f, 240.0f / 256.0f, 1.0f - 160.0f / 256.0f };
 static C3D_RenderTarget* top;
 static C3D_RenderTarget* bottom;
+
+/* Party icons: six 32x32 icons side by side in a 256x64 RGBA8 texture. */
+static C3D_Tex iconTex;
+static uint32_t* iconBuffer;
+static Tex3DS_SubTexture iconSub[PARTY_MAX];
+static uint16_t iconSpecies[PARTY_MAX];
 
 static bool hasSound;
 static ndspWaveBuf dspBuffer[DSP_BUFFERS];
@@ -273,9 +286,31 @@ static void flushSave(void) {
 	}
 }
 
-static bool fileExists(const char* path) {
-	struct stat st;
-	return stat(path, &st) == 0;
+/* A save the game never wrote to: missing, empty, or erased flash (all 0xFF
+ * or all 0x00). The first launch creates such a file, so a bundled starting
+ * save must be allowed to replace it. */
+static bool saveIsBlank(const char* path) {
+	FILE* f = fopen(path, "rb");
+	if (!f) {
+		return true;
+	}
+	static u8 buf[0x4000];
+	size_t n;
+	bool sawFF = false, saw00 = false, other = false;
+	while (!other && (n = fread(buf, 1, sizeof(buf), f)) > 0) {
+		for (size_t i = 0; i < n; ++i) {
+			if (buf[i] == 0xFF) {
+				sawFF = true;
+			} else if (buf[i] == 0x00) {
+				saw00 = true;
+			} else {
+				other = true;
+				break;
+			}
+		}
+	}
+	fclose(f);
+	return !other && !(sawFF && saw00);
 }
 
 static void copyFile(const char* from, const char* to) {
@@ -328,6 +363,124 @@ static void loadState(void) {
 	uiToast(&ui, ok ? "State loaded" : "Could not load the state");
 }
 
+/* ---------------------------------------------------------------- Save import */
+
+/* Finds a save made by another emulator or injector somewhere on the SD card
+ * (mGBA, RetroArch, a ROM folder...) the first time the game starts. Only a
+ * copy is used; the original file is never modified. */
+
+struct SaveCandidate {
+	char path[256];
+	time_t mtime;
+	bool found;
+};
+
+static size_t expectedSaveSize(int type) {
+	switch (type) {
+	case SAVEDATA_FLASH1M: return 0x20000;
+	case SAVEDATA_FLASH512: return 0x10000;
+	case SAVEDATA_SRAM: return 0x8000;
+	case SAVEDATA_EEPROM: return 0x2000;
+	case SAVEDATA_EEPROM512: return 0x200;
+	default: return 0;
+	}
+}
+
+/* Lower-case words of the title worth matching ("unbound" for "Pokemon Unbound"). */
+static int titleKeywords(char words[4][32]) {
+	int n = 0;
+	char tmp[65];
+	snprintf(tmp, sizeof(tmp), "%s", cfg.title);
+	char* save = NULL;
+	for (char* w = strtok_r(tmp, " -_.:", &save); w && n < 4; w = strtok_r(NULL, " -_.:", &save)) {
+		if (strlen(w) < 3 || !strcasecmp(w, "pokemon") || !strcasecmp(w, "the") || !strcasecmp(w, "version")) {
+			continue;
+		}
+		int i = 0;
+		for (; w[i] && i < 31; ++i) {
+			words[n][i] = tolower((unsigned char) w[i]);
+		}
+		words[n][i] = 0;
+		++n;
+	}
+	return n;
+}
+
+static bool nameMatches(const char* name, char words[4][32], int nwords) {
+	char lower[256];
+	int i = 0;
+	for (; name[i] && i < 255; ++i) {
+		lower[i] = tolower((unsigned char) name[i]);
+	}
+	lower[i] = 0;
+	const char* ext = strrchr(lower, '.');
+	if (!ext || (strcmp(ext, ".sav") && strcmp(ext, ".srm") && strcmp(ext, ".saveram") && strcmp(ext, ".sa1"))) {
+		return false;
+	}
+	for (int w = 0; w < nwords; ++w) {
+		if (!strstr(lower, words[w])) {
+			return false;
+		}
+	}
+	return nwords > 0;
+}
+
+static void scanDir(const char* dir, int depth, size_t want, char words[4][32], int nwords, struct SaveCandidate* best) {
+	DIR* d = opendir(dir);
+	if (!d) {
+		return;
+	}
+	struct dirent* e;
+	while ((e = readdir(d))) {
+		if (e->d_name[0] == '.') {
+			continue;
+		}
+		char path[256];
+		snprintf(path, sizeof(path), "%s%s%s", dir, dir[strlen(dir) - 1] == '/' ? "" : "/", e->d_name);
+		struct stat st;
+		if (stat(path, &st) != 0) {
+			continue;
+		}
+		if (S_ISDIR(st.st_mode)) {
+			/* System folders hold no emulator saves and can be huge. */
+			if (depth > 0 && strcasecmp(e->d_name, "Nintendo 3DS") && strcasecmp(e->d_name, "luma") &&
+			    strcasecmp(e->d_name, "gba2cia")) {
+				scanDir(path, depth - 1, want, words, nwords, best);
+			}
+			continue;
+		}
+		if ((size_t) st.st_size < want || (size_t) st.st_size > want + 0x200 || !nameMatches(e->d_name, words, nwords)) {
+			continue;
+		}
+		if (!best->found || st.st_mtime > best->mtime) {
+			snprintf(best->path, sizeof(best->path), "%s", path);
+			best->mtime = st.st_mtime;
+			best->found = true;
+		}
+	}
+	closedir(d);
+}
+
+static void importSaveFromSd(void) {
+	size_t want = expectedSaveSize(cfg.saveType);
+	char words[4][32];
+	int nwords = titleKeywords(words);
+	if (!want || !nwords) {
+		return;
+	}
+	struct SaveCandidate best = { 0 };
+	scanDir("sdmc:/", 4, want, words, nwords, &best);
+	if (!best.found) {
+		return;
+	}
+	copyFile(best.path, savePath);
+	char msg[96];
+	const char* shown = strncmp(best.path, "sdmc:", 5) ? best.path : best.path + 5;
+	snprintf(msg, sizeof(msg), "Save imported from %.70s", shown);
+	uiToast(&ui, msg);
+	ui.toastFrames = 600;
+}
+
 /* ---------------------------------------------------------------- Lifecycle */
 
 static void aptHookFunc(APT_HookType hook, void* param) {
@@ -340,6 +493,50 @@ static void aptHookFunc(APT_HookType hook, void* param) {
 		break;
 	default:
 		break;
+	}
+}
+
+/* ---------------------------------------------------------------- Party icons */
+
+static void iconsInit(void) {
+	C3D_TexInitVRAM(&iconTex, 256, 64, GPU_RGBA8);
+	C3D_TexSetFilter(&iconTex, GPU_NEAREST, GPU_NEAREST);
+	C3D_TexSetWrap(&iconTex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
+	iconBuffer = linearMemAlign(256 * 64 * 4, 0x80);
+	memset(iconBuffer, 0, 256 * 64 * 4);
+	for (int i = 0; i < PARTY_MAX; ++i) {
+		/* Same orientation rule as the game picture: row 0 at v = 1. */
+		iconSub[i] = (Tex3DS_SubTexture) { 32, 32, i * 32 / 256.0f, 1.0f, (i + 1) * 32 / 256.0f, 1.0f - 32 / 64.0f };
+		ui.icons[i] = (C2D_Image) { &iconTex, &iconSub[i] };
+		ui.iconValid[i] = false;
+		iconSpecies[i] = 0;
+	}
+}
+
+static void iconsUpdate(void) {
+	bool changed = false;
+	static uint32_t px[32 * 32];
+	for (int i = 0; i < PARTY_MAX; ++i) {
+		const struct PartyMember* m = &ui.party.members[i];
+		uint16_t species = (ui.party.valid && i < ui.party.count && !m->egg) ? m->species : 0;
+		if (species == iconSpecies[i]) {
+			continue;
+		}
+		iconSpecies[i] = species;
+		changed = true;
+		bool ok = species && pokemonIcon(core, species, px);
+		ui.iconValid[i] = ok;
+		for (int y = 0; y < 32; ++y) {
+			for (int x = 0; x < 32; ++x) {
+				iconBuffer[y * 256 + i * 32 + x] = ok ? px[y * 32 + x] : 0;
+			}
+		}
+	}
+	if (changed) {
+		GSPGPU_FlushDataCache(iconBuffer, 256 * 64 * 4);
+		C3D_SyncDisplayTransfer((u32*) iconBuffer, GX_BUFFER_DIM(256, 64), iconTex.data, GX_BUFFER_DIM(256, 64),
+		                        GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) |
+		                            GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_TILED(1));
 	}
 }
 
@@ -497,6 +694,7 @@ int main(void) {
 	ui.sound = hasSound;
 	ui.pokemon = pokemonSupported(cfg.gameCode);
 
+	iconsInit();
 	C3D_TexInitVRAM(&gameTex, 256, 256, GPU_RGB565);
 	C3D_TexSetWrap(&gameTex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
 	applyScaleFilter();
@@ -510,8 +708,18 @@ int main(void) {
 	mkdir(saveDir, 0777);
 	snprintf(savePath, sizeof(savePath), "%s/game.sav", saveDir);
 	snprintf(statePath, sizeof(statePath), "%s/state.ss0", saveDir);
-	if (cfg.hasInitialSave && !fileExists(savePath)) {
-		copyFile("romfs:/initial.sav", savePath);
+	if (!saveIsBlank(savePath)) {
+		/* Keep the save as it was before this session. */
+		char backup[112];
+		snprintf(backup, sizeof(backup), "%s.bak", savePath);
+		copyFile(savePath, backup);
+	} else {
+		if (cfg.hasInitialSave) {
+			copyFile("romfs:/initial.sav", savePath);
+			uiToast(&ui, "Save installed from the title");
+		} else {
+			importSaveFromSd();
+		}
 	}
 
 	core = GBACoreCreate();
@@ -611,6 +819,8 @@ int main(void) {
 
 		if (ui.pokemon && (frame % 20) == 0) {
 			pokemonReadParty(core, cfg.gameCode, &ui.party);
+			pokemonReadTrainer(core, cfg.gameCode, &ui.trainer);
+			iconsUpdate();
 		}
 
 		uploadFrame();

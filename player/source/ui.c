@@ -90,31 +90,49 @@ static void text(const char* s, float x, float y, float scale, u32 color, u32 fl
 	C2D_DrawText(&t, C2D_WithColor | flags, x, y, 0.5f, scale, scale, color);
 }
 
+static void hpBar(float x, float y, float w, const struct PartyMember* m) {
+	C2D_DrawRectSolid(x, y, 0.5f, w, 5, COL_BAR_BG);
+	float frac = m->maxHp ? (float) m->hp / m->maxHp : 0;
+	u32 col = frac > 0.5f ? COL_GREEN : frac > 0.2f ? COL_YELLOW : COL_RED;
+	C2D_DrawRectSolid(x, y, 0.55f, w * frac, 5, col);
+}
+
+/* Party as a 2 x 3 grid of cards: icon, name, level, HP bar, HP, status. */
 static void drawParty(const struct UiState* ui) {
-	const float top = HEADER_H + 6;
-	const float rowH = (DOCK_Y - top - 4) / PARTY_MAX;
-	for (int i = 0; i < ui->party.count; ++i) {
+	const float top = HEADER_H + 4;
+	const float gap = 4;
+	const float cw = (W - gap * 3) / 2;
+	const float ch = (DOCK_Y - top - gap * 3) / 3;
+	for (int i = 0; i < PARTY_MAX; ++i) {
+		float x = gap + (i & 1) * (cw + gap);
+		float y = top + gap + (i >> 1) * (ch + gap);
+		if (i >= ui->party.count) {
+			C2D_DrawRectSolid(x, y, 0.4f, cw, ch, COL_BG);
+			C2D_DrawRectSolid(x, y + ch - 1, 0.45f, cw, 1, COL_LINE);
+			continue;
+		}
 		const struct PartyMember* m = &ui->party.members[i];
-		float y = top + i * rowH;
-		C2D_DrawRectSolid(6, y, 0.5f, W - 12, rowH - 3, COL_PANEL);
-		text(m->name, 14, y + 4, 0.5f, COL_TEXT, 0);
-		if (!m->egg) {
-			char lv[16];
-			snprintf(lv, sizeof(lv), "Lv %u", m->level);
-			text(lv, 130, y + 4, 0.5f, COL_DIM, 0);
-			/* HP bar */
-			float bx = 180, bw = 80, bh = 6, by = y + (rowH - 3) / 2 - bh / 2;
-			C2D_DrawRectSolid(bx, by, 0.5f, bw, bh, COL_BAR_BG);
-			float frac = m->maxHp ? (float) m->hp / m->maxHp : 0;
-			u32 col = frac > 0.5f ? COL_GREEN : frac > 0.2f ? COL_YELLOW : COL_RED;
-			C2D_DrawRectSolid(bx, by, 0.5f, bw * frac, bh, col);
-			char hp[16];
-			snprintf(hp, sizeof(hp), "%u/%u", m->hp, m->maxHp);
-			text(hp, W - 12, y + 4, 0.42f, COL_DIM, C2D_AlignRight);
-			const char* st = pokemonStatusLabel(m);
-			if (st[0]) {
-				text(st, 130, y + 4 + 11, 0.38f, COL_RED, 0);
-			}
+		C2D_DrawRectSolid(x, y, 0.4f, cw, ch, COL_PANEL);
+		if (ui->iconValid[i]) {
+			C2D_DrawImageAt(ui->icons[i], x + 2, y + (ch - 32) / 2 - 2, 0.6f, NULL, 1.0f, 1.0f);
+		}
+		float tx = x + 38;
+		text(m->name, tx, y + 3, 0.45f, COL_TEXT, 0);
+		if (m->egg) {
+			continue;
+		}
+		char lv[12];
+		snprintf(lv, sizeof(lv), "Lv%u", m->level);
+		text(lv, x + cw - 5, y + 3, 0.4f, COL_DIM, C2D_AlignRight);
+		hpBar(tx, y + 22, cw - 44, m);
+		char hp[16];
+		snprintf(hp, sizeof(hp), "%u/%u", m->hp, m->maxHp);
+		text(hp, tx, y + 29, 0.38f, COL_DIM, 0);
+		const char* st = pokemonStatusLabel(m);
+		if (st[0]) {
+			text(st, x + cw - 5, y + 29, 0.38f, COL_RED, C2D_AlignRight);
+		} else if (m->speciesName[0] && strcmp(m->speciesName, m->name) != 0) {
+			text(m->speciesName, x + cw - 5, y + 29, 0.38f, COL_DIM, C2D_AlignRight);
 		}
 	}
 }
@@ -123,10 +141,10 @@ static void drawHelp(const struct UiState* ui) {
 	const float x = 14;
 	float y = HEADER_H + 14;
 	if (ui->pokemon) {
-		text("Party not available yet.", x, y, 0.5f, COL_DIM, 0);
-		y += 20;
-		text("It appears once a save is loaded.", x, y, 0.45f, COL_DIM, 0);
-		y += 28;
+		text("Your party appears here once you continue", x, y, 0.45f, COL_TEXT, 0);
+		y += 16;
+		text("or start a game.", x, y, 0.45f, COL_TEXT, 0);
+		y += 26;
 	}
 	text("SAVE / LOAD  quick save state (one slot)", x, y, 0.45f, COL_DIM, 0);
 	y += 18;
@@ -150,7 +168,13 @@ void uiDraw(struct UiState* ui) {
 	/* Header */
 	C2D_DrawRectSolid(0, 0, 0.2f, W, HEADER_H, COL_PANEL);
 	C2D_DrawRectSolid(0, HEADER_H, 0.2f, W, 1, COL_LINE);
-	text(ui->title, 8, 5, 0.5f, COL_TEXT, 0);
+	if (ui->trainer.valid) {
+		char who[64];
+		snprintf(who, sizeof(who), "%s   %u:%02u", ui->trainer.name, ui->trainer.hours, ui->trainer.minutes);
+		text(who, 8, 5, 0.5f, COL_TEXT, 0);
+	} else {
+		text(ui->title, 8, 5, 0.5f, COL_TEXT, 0);
+	}
 	time_t now = time(NULL);
 	struct tm* tm = gmtime(&now);
 	char clock[8];

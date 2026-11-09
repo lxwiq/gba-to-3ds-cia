@@ -25,6 +25,9 @@ struct UiState {
 	enum ScaleMode scale;
 	bool pokemon;            /* the game is a Gen III Pokemon game */
 	struct Party party;
+	struct Trainer trainer;
+	C2D_Image icons[PARTY_MAX];
+	bool iconValid[PARTY_MAX];
 	bool sound;              /* DSP firmware present */
 	char toast[96];
 	int toastFrames;
