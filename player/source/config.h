@@ -18,6 +18,7 @@ enum TestEventKind {
 	TEST_PRESS,
 	TEST_TOUCH,
 	TEST_SHOT,
+	TEST_PARTY,
 	TEST_EXIT
 };
 

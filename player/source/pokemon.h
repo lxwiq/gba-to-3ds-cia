@@ -52,4 +52,8 @@ void pokemonReadTrainer(struct mCore* core, const char* gameCode, struct Trainer
  * tables look wrong. */
 bool pokemonIcon(struct mCore* core, uint16_t species, uint32_t* rgba32x32);
 
+/* Test mode only: write a sample party into RAM to check the bottom screen
+ * without a save file. */
+void pokemonWriteTestParty(struct mCore* core, const char* gameCode);
+
 #endif

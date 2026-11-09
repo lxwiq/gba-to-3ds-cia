@@ -300,3 +300,55 @@ const char* pokemonStatusLabel(const struct PartyMember* m) {
 	if (s & 0x40) return "PAR";
 	return "";
 }
+
+void pokemonWriteTestParty(struct mCore* core, const char* gameCode) {
+	const struct PartyLayout* layout = findLayout(gameCode);
+	if (!layout) {
+		return;
+	}
+	static const uint16_t species[PARTY_MAX] = { 10, 11, 13, 16, 19, 21 };
+	static const uint8_t levels[PARTY_MAX] = { 54, 52, 50, 47, 49, 55 };
+	static const uint16_t hp[PARTY_MAX][2] = { { 160, 160 }, { 81, 158 }, { 22, 155 }, { 120, 120 }, { 0, 230 }, { 170, 182 } };
+	static const uint32_t status[PARTY_MAX] = { 0, 0x08, 0, 0x40, 0, 0 };
+	for (int slot = 0; slot < PARTY_MAX; ++slot) {
+		uint8_t m[100];
+		memset(m, 0, sizeof(m));
+		uint32_t personality = 24u * (1000u + slot); /* % 24 == 0: Growth first */
+		uint32_t otId = 0x0000ABCD;
+		memcpy(&m[0], &personality, 4);
+		memcpy(&m[4], &otId, 4);
+		/* Nickname "TEST A" .. "TEST F" (generic test data). */
+		static const uint8_t testName[6] = { 0xCE, 0xBF, 0xCD, 0xCE, 0x00, 0xBB };
+		memset(&m[8], 0xFF, 10);
+		memcpy(&m[8], testName, 6);
+		m[8 + 5] = 0xBB + slot;
+		m[0x12] = 2;    /* English */
+		m[0x13] = 0x02; /* has species */
+		memset(&m[0x14], 0xFF, 7);
+		m[0x14] = 0xCE; m[0x15] = 0xBF; m[0x16] = 0xCD; m[0x17] = 0xCE; /* "TEST" */
+		uint8_t secure[48];
+		memset(secure, 0, sizeof(secure));
+		memcpy(&secure[0], &species[slot], 2); /* Growth: species */
+		secure[9] = 70;                        /* friendship */
+		uint16_t sum = 0;
+		for (int i = 0; i < 48; i += 2) {
+			sum += secure[i] | (secure[i + 1] << 8);
+		}
+		memcpy(&m[0x1C], &sum, 2);
+		uint32_t key = personality ^ otId;
+		for (int i = 0; i < 48; i += 4) {
+			uint32_t w;
+			memcpy(&w, &secure[i], 4);
+			w ^= key;
+			memcpy(&m[0x20 + i], &w, 4);
+		}
+		memcpy(&m[0x50], &status[slot], 4);
+		m[0x54] = levels[slot];
+		memcpy(&m[0x56], &hp[slot][0], 2);
+		memcpy(&m[0x58], &hp[slot][1], 2);
+		for (int i = 0; i < 100; ++i) {
+			core->rawWrite8(core, layout->party + slot * 100 + i, -1, m[i]);
+		}
+	}
+	core->rawWrite8(core, layout->count, -1, PARTY_MAX);
+}

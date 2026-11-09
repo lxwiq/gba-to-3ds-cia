@@ -17,6 +17,8 @@
 #define BUTTONS 6
 
 static C2D_TextBuf textBuf;
+/* Depth of text: above panels (0.1-0.55), below the toast box (0.8). */
+static float textDepth = 0.6f;
 
 /* Palette: neutral greys and one accent, as in the web app. */
 #define COL_BG       C2D_Color32(0x16, 0x18, 0x1C, 0xFF)
@@ -87,7 +89,7 @@ static void text(const char* s, float x, float y, float scale, u32 color, u32 fl
 	C2D_Text t;
 	C2D_TextParse(&t, textBuf, s);
 	C2D_TextOptimize(&t);
-	C2D_DrawText(&t, C2D_WithColor | flags, x, y, 0.5f, scale, scale, color);
+	C2D_DrawText(&t, C2D_WithColor | flags, x, y, textDepth, scale, scale, color);
 }
 
 static void hpBar(float x, float y, float w, const struct PartyMember* m) {
@@ -190,8 +192,11 @@ void uiDraw(struct UiState* ui) {
 	/* Toast */
 	if (ui->toastFrames > 0) {
 		--ui->toastFrames;
-		C2D_DrawRectSolid(20, DOCK_Y - 30, 0.6f, W - 40, 24, COL_PANEL_HI);
-		text(ui->toast, W / 2, DOCK_Y - 26, 0.45f, COL_TEXT, C2D_AlignCenter);
+		C2D_DrawRectSolid(8, DOCK_Y - 30, 0.8f, W - 16, 24, COL_PANEL_HI);
+		C2D_DrawRectSolid(8, DOCK_Y - 30, 0.85f, 3, 24, COL_ACCENT);
+		textDepth = 0.95f;
+		text(ui->toast, W / 2, DOCK_Y - 25, 0.4f, COL_TEXT, C2D_AlignCenter);
+		textDepth = 0.6f;
 	}
 
 	/* Dock */

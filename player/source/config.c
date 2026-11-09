@@ -79,6 +79,8 @@ static void parseTestScript(struct PlayerConfig* cfg, char* script) {
 			ev.y = y ? atoi(y) : 0;
 		} else if (!strcmp(kind, "shot")) {
 			ev.kind = TEST_SHOT;
+		} else if (!strcmp(kind, "party")) {
+			ev.kind = TEST_PARTY;
 		} else if (!strcmp(kind, "exit")) {
 			ev.kind = TEST_EXIT;
 		} else {

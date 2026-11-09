@@ -65,6 +65,8 @@ static C3D_Tex iconTex;
 static uint32_t* iconBuffer;
 static Tex3DS_SubTexture iconSub[PARTY_MAX];
 static uint16_t iconSpecies[PARTY_MAX];
+/* Test mode: layout screenshots without game artwork. */
+static bool testNoIcons;
 
 static bool hasSound;
 static ndspWaveBuf dspBuffer[DSP_BUFFERS];
@@ -524,7 +526,7 @@ static void iconsUpdate(void) {
 		}
 		iconSpecies[i] = species;
 		changed = true;
-		bool ok = species && pokemonIcon(core, species, px);
+		bool ok = species && !testNoIcons && pokemonIcon(core, species, px);
 		ui.iconValid[i] = ok;
 		for (int y = 0; y < 32; ++y) {
 			for (int x = 0; x < 32; ++x) {
@@ -800,6 +802,10 @@ int main(void) {
 				break;
 			case TEST_SHOT:
 				shot = true;
+				break;
+			case TEST_PARTY:
+				pokemonWriteTestParty(core, cfg.gameCode);
+				testNoIcons = true;
 				break;
 			case TEST_EXIT:
 				quit = true;
