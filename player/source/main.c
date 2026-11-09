@@ -479,9 +479,15 @@ static void importSaveFromSd(void) {
 		return;
 	}
 	copyFile(best.path, savePath);
+	/* Show the file name only, shortened to fit the bottom screen. */
+	const char* name = strrchr(best.path, '/');
+	name = name ? name + 1 : best.path;
 	char msg[96];
-	const char* shown = strncmp(best.path, "sdmc:", 5) ? best.path : best.path + 5;
-	snprintf(msg, sizeof(msg), "Save imported from %.70s", shown);
+	if (strlen(name) > 44) {
+		snprintf(msg, sizeof(msg), "Save imported: %.41s...", name);
+	} else {
+		snprintf(msg, sizeof(msg), "Save imported: %s", name);
+	}
 	uiToast(&ui, msg);
 	ui.toastFrames = 600;
 }

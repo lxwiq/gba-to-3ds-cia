@@ -229,8 +229,14 @@ void pokemonReadTrainer(struct mCore* core, const char* gameCode, struct Trainer
 	t->valid = t->name[0] && t->hours < 1000 && t->minutes < 60;
 }
 
-/* Decode one 100-byte party structure. Returns false when the checksum or
- * the values do not make sense (wrong address, corrupted data). */
+/* Decode one 100-byte party structure. Returns false when the values do not
+ * make sense (wrong address, corrupted data).
+ *
+ * Two layouts exist:
+ * - the original games: the 48-byte substructure block is XOR-encrypted with
+ *   personality ^ OT ID, shuffled by personality % 24 and checksummed;
+ * - Complete FireRed Upgrade hacks (Pokemon Unbound...): stored in plain,
+ *   in fixed order (Growth first), checksum left at 0. */
 static bool decodeMember(struct mCore* core, const uint8_t* raw, struct PartyMember* m) {
 	memset(m, 0, sizeof(*m));
 	uint32_t personality = read32(&raw[0x00]);
@@ -248,11 +254,21 @@ static bool decodeMember(struct mCore* core, const uint8_t* raw, struct PartyMem
 	for (int i = 0; i < 48; i += 2) {
 		sum += read16(&secure[i]);
 	}
-	if (sum != read16(&raw[0x1C]) || personality == 0) {
+	if (personality == 0) {
 		return false;
 	}
-	const uint8_t* growth = &secure[growthPos[personality % 24] * 12];
-	m->species = read16(growth);
+	if (sum == read16(&raw[0x1C])) {
+		m->species = read16(&secure[growthPos[personality % 24] * 12]);
+	} else {
+		/* Plain layout: accept it only if everything else is consistent
+		 * (checked below, plus a known species name). */
+		m->species = read16(&raw[0x20]);
+		char probe[32];
+		speciesName(core, m->species, probe, sizeof(probe));
+		if (!probe[0] || m->species >= SPECIES_MAX) {
+			return false;
+		}
+	}
 	m->egg = (raw[0x13] & 0x04) != 0;
 	m->status = read32(&raw[0x50]);
 	m->level = raw[0x54];
@@ -309,11 +325,21 @@ bool pokemonReadSave(struct mCore* core, const char* gameCode, const uint8_t* sa
 		return false;
 	}
 	bool frlg = !strncmp(gameCode, "BPR", 3) || !strncmp(gameCode, "BPG", 3);
+	/* A copy is valid when its 14 sections carry the ids 0..13. The
+	 * signature is 0x08012025 in the original games and 0x01121999 in
+	 * Complete FireRed Upgrade hacks, so it is not checked. */
 	int best = -1;
 	uint32_t bestCounter = 0;
 	for (int slot = 0; slot < 2; ++slot) {
 		const uint8_t* sec = sav + slot * 0xE000;
-		if (read32(&sec[0xFF8]) != 0x08012025) {
+		uint16_t seen = 0;
+		for (int i = 0; i < 14; ++i) {
+			uint16_t id = read16(&sec[i * 0x1000 + 0xFF4]);
+			if (id < 14) {
+				seen |= 1 << id;
+			}
+		}
+		if (seen != 0x3FFF) {
 			continue;
 		}
 		uint32_t counter = read32(&sec[0xFFC]);
@@ -329,9 +355,6 @@ bool pokemonReadSave(struct mCore* core, const char* gameCode, const uint8_t* sa
 	const uint8_t* s1 = NULL;
 	for (int i = 0; i < 14; ++i) {
 		const uint8_t* sec = sav + best * 0xE000 + i * 0x1000;
-		if (read32(&sec[0xFF8]) != 0x08012025) {
-			continue;
-		}
 		uint16_t id = read16(&sec[0xFF4]);
 		if (id == 0) {
 			s0 = sec;
