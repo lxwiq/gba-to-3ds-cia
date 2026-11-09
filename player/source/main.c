@@ -42,6 +42,7 @@
 #include <sys/stat.h>
 
 #include "config.h"
+#include "explored.h"
 #include "pokemon.h"
 #include "ui.h"
 
@@ -501,6 +502,7 @@ static void aptHookFunc(APT_HookType hook, void* param) {
 	case APTHOOK_ONSLEEP:
 	case APTHOOK_ONEXIT:
 		flushSave();
+		exploredFlush();
 		break;
 	default:
 		break;
@@ -719,6 +721,7 @@ int main(void) {
 	mkdir("sdmc:/3ds/gba2cia", 0777);
 	mkdir(saveDir, 0777);
 	snprintf(savePath, sizeof(savePath), "%s/game.sav", saveDir);
+	exploredInit(saveDir);
 	snprintf(statePath, sizeof(statePath), "%s/state.ss0", saveDir);
 	if (!saveIsBlank(savePath)) {
 		/* Keep the save as it was before this session. */
@@ -864,6 +867,7 @@ int main(void) {
 			}
 			iconsUpdate();
 			pokemonReadMap(core, cfg.gameCode, &ui.map);
+			exploredApply(&ui.map);
 		}
 
 		uploadFrame();
@@ -876,6 +880,7 @@ int main(void) {
 
 exit:
 	flushSave();
+	exploredFlush();
 	if (core) {
 		core->deinit(core);
 	}

@@ -296,6 +296,8 @@ void pokemonReadMap(struct mCore* core, const char* gameCode, struct MapView* ma
 	map->height = height;
 	map->px = px;
 	map->py = py;
+	map->group = (int8_t) core->rawRead8(core, sb1 + 4, -1);
+	map->num = (int8_t) core->rawRead8(core, sb1 + 5, -1);
 	map->originX = px - MAP_VIEW_W / 2;
 	map->originY = py - MAP_VIEW_H / 2;
 	for (int y = 0; y < MAP_VIEW_H; ++y) {
@@ -324,6 +326,13 @@ void pokemonReadMap(struct mCore* core, const char* gameCode, struct MapView* ma
 			}
 		}
 		for (unsigned i = 0; i < objects && i < 64 && romPointer(objectList); ++i) {
+			/* People the story has not brought in yet are hidden by an event
+			 * flag: skip them, so the map shows only who is really there. */
+			uint16_t flag = core->rawRead16(core, objectList + i * 24 + 20, -1);
+			if (flag && layout->flagsOffset &&
+			    (core->rawRead8(core, sb1 + layout->flagsOffset + flag / 8, -1) >> (flag & 7)) & 1) {
+				continue;
+			}
 			int ox = (int16_t) core->rawRead16(core, objectList + i * 24 + 4, -1) - map->originX;
 			int oy = (int16_t) core->rawRead16(core, objectList + i * 24 + 6, -1) - map->originY;
 			if (ox >= 0 && oy >= 0 && ox < MAP_VIEW_W && oy < MAP_VIEW_H && map->cell[oy][ox] != CELL_WARP) {

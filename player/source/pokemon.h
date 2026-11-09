@@ -56,6 +56,7 @@ struct Trainer {
 enum MapCell { CELL_OUTSIDE = 0, CELL_FLOOR, CELL_WALL, CELL_WARP, CELL_PERSON };
 struct MapView {
 	bool valid;
+	int group, num;         /* map identity, for the explored areas */
 	char name[40];
 	int px, py;             /* player position in the map */
 	int width, height;      /* map size */
