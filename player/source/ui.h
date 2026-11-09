@@ -26,6 +26,7 @@ struct UiState {
 	bool pokemon;            /* the game is a Gen III Pokemon game */
 	struct Party party;
 	struct Trainer trainer;
+	bool fromSave;           /* party and trainer come from the save file */
 	C2D_Image icons[PARTY_MAX];
 	bool iconValid[PARTY_MAX];
 	bool sound;              /* DSP firmware present */

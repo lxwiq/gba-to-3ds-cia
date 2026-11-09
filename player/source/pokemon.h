@@ -3,6 +3,7 @@
 #define PLAYER_POKEMON_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 struct mCore;
@@ -51,6 +52,11 @@ void pokemonReadTrainer(struct mCore* core, const char* gameCode, struct Trainer
  * (0xRRGGBBAA, row-major, transparent background). Returns false when the
  * tables look wrong. */
 bool pokemonIcon(struct mCore* core, uint16_t species, uint32_t* rgba32x32);
+
+/* Read the party and trainer from a save file (raw 128 KiB flash image),
+ * so they can be shown before the game is loaded. */
+bool pokemonReadSave(struct mCore* core, const char* gameCode, const uint8_t* sav, size_t size,
+                     struct Party* party, struct Trainer* trainer);
 
 /* Test mode only: write a sample party into RAM to check the bottom screen
  * without a save file. */

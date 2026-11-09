@@ -65,8 +65,11 @@ static C3D_Tex iconTex;
 static uint32_t* iconBuffer;
 static Tex3DS_SubTexture iconSub[PARTY_MAX];
 static uint16_t iconSpecies[PARTY_MAX];
-/* Test mode: layout screenshots without game artwork. */
+/* Test mode: screenshots without game artwork. */
 static bool testNoIcons;
+/* Party and trainer read from the save file at launch. */
+static struct Party saveParty;
+static struct Trainer saveTrainer;
 
 static bool hasSound;
 static ndspWaveBuf dspBuffer[DSP_BUFFERS];
@@ -760,6 +763,22 @@ int main(void) {
 	/* The GBA core already provides a wall-clock RTC source (the 3DS clock);
 	 * the override below plugs the clock chip into the cartridge. */
 	core->reset(core);
+	/* Show the party and trainer of the save right away, before the game
+	 * itself has loaded them. */
+	if (ui.pokemon) {
+		FILE* sf = fopen(savePath, "rb");
+		if (sf) {
+			static uint8_t sav[0x20000];
+			size_t n = fread(sav, 1, sizeof(sav), sf);
+			fclose(sf);
+			pokemonReadSave(core, cfg.gameCode, sav, n, &saveParty, &saveTrainer);
+			ui.party = saveParty;
+			ui.trainer = saveTrainer;
+			ui.fromSave = saveParty.valid || saveTrainer.valid;
+		}
+	}
+	testNoIcons = cfg.test;
+
 	struct GBACartridgeOverride override = {
 		.savetype = cfg.saveType,
 		.hardware = cfg.rtc ? HW_RTC : HW_NO_OVERRIDE,
@@ -805,7 +824,6 @@ int main(void) {
 				break;
 			case TEST_PARTY:
 				pokemonWriteTestParty(core, cfg.gameCode);
-				testNoIcons = true;
 				break;
 			case TEST_EXIT:
 				quit = true;
@@ -824,8 +842,19 @@ int main(void) {
 		++frame;
 
 		if (ui.pokemon && (frame % 20) == 0) {
-			pokemonReadParty(core, cfg.gameCode, &ui.party);
-			pokemonReadTrainer(core, cfg.gameCode, &ui.trainer);
+			struct Party live;
+			struct Trainer liveTrainer;
+			pokemonReadParty(core, cfg.gameCode, &live);
+			pokemonReadTrainer(core, cfg.gameCode, &liveTrainer);
+			if (live.valid) {
+				ui.party = live;
+				ui.trainer = liveTrainer.valid ? liveTrainer : saveTrainer;
+				ui.fromSave = false;
+			} else {
+				ui.party = saveParty;
+				ui.trainer = saveTrainer;
+				ui.fromSave = saveParty.valid || saveTrainer.valid;
+			}
 			iconsUpdate();
 		}
 

@@ -229,6 +229,47 @@ void pokemonReadTrainer(struct mCore* core, const char* gameCode, struct Trainer
 	t->valid = t->name[0] && t->hours < 1000 && t->minutes < 60;
 }
 
+/* Decode one 100-byte party structure. Returns false when the checksum or
+ * the values do not make sense (wrong address, corrupted data). */
+static bool decodeMember(struct mCore* core, const uint8_t* raw, struct PartyMember* m) {
+	memset(m, 0, sizeof(*m));
+	uint32_t personality = read32(&raw[0x00]);
+	uint32_t otId = read32(&raw[0x04]);
+	uint32_t key = personality ^ otId;
+	uint8_t secure[48];
+	for (int i = 0; i < 48; i += 4) {
+		uint32_t w = read32(&raw[0x20 + i]) ^ key;
+		secure[i] = w;
+		secure[i + 1] = w >> 8;
+		secure[i + 2] = w >> 16;
+		secure[i + 3] = w >> 24;
+	}
+	uint16_t sum = 0;
+	for (int i = 0; i < 48; i += 2) {
+		sum += read16(&secure[i]);
+	}
+	if (sum != read16(&raw[0x1C]) || personality == 0) {
+		return false;
+	}
+	const uint8_t* growth = &secure[growthPos[personality % 24] * 12];
+	m->species = read16(growth);
+	m->egg = (raw[0x13] & 0x04) != 0;
+	m->status = read32(&raw[0x50]);
+	m->level = raw[0x54];
+	m->hp = read16(&raw[0x56]);
+	m->maxHp = read16(&raw[0x58]);
+	if (m->species == 0 || m->maxHp == 0 || m->hp > m->maxHp || m->level > 100) {
+		return false;
+	}
+	if (m->egg) {
+		snprintf(m->name, sizeof(m->name), "Egg");
+	} else {
+		decodeName(&raw[0x08], 10, m->name, sizeof(m->name));
+		speciesName(core, m->species, m->speciesName, sizeof(m->speciesName));
+	}
+	return true;
+}
+
 void pokemonReadParty(struct mCore* core, const char* gameCode, struct Party* party) {
 	memset(party, 0, sizeof(*party));
 	const struct PartyLayout* layout = findLayout(gameCode);
@@ -236,7 +277,7 @@ void pokemonReadParty(struct mCore* core, const char* gameCode, struct Party* pa
 		return;
 	}
 	int count = core->rawRead8(core, layout->count, -1);
-	if (count < 0 || count > PARTY_MAX) {
+	if (count <= 0 || count > PARTY_MAX) {
 		return;
 	}
 	uint8_t raw[100];
@@ -245,44 +286,82 @@ void pokemonReadParty(struct mCore* core, const char* gameCode, struct Party* pa
 		for (int i = 0; i < 100; ++i) {
 			raw[i] = core->rawRead8(core, base + i, -1);
 		}
-		uint32_t personality = read32(&raw[0x00]);
-		uint32_t otId = read32(&raw[0x04]);
-		uint32_t key = personality ^ otId;
-		uint8_t secure[48];
-		for (int i = 0; i < 48; i += 4) {
-			uint32_t w = read32(&raw[0x20 + i]) ^ key;
-			secure[i] = w;
-			secure[i + 1] = w >> 8;
-			secure[i + 2] = w >> 16;
-			secure[i + 3] = w >> 24;
-		}
-		uint16_t sum = 0;
-		for (int i = 0; i < 48; i += 2) {
-			sum += read16(&secure[i]);
-		}
-		if (sum != read16(&raw[0x1C]) || personality == 0) {
-			return; /* wrong address or corrupted data: hide the panel */
-		}
-		struct PartyMember* m = &party->members[slot];
-		const uint8_t* growth = &secure[growthPos[personality % 24] * 12];
-		m->species = read16(growth);
-		m->egg = (raw[0x13] & 0x04) != 0;
-		m->status = read32(&raw[0x50]);
-		m->level = raw[0x54];
-		m->hp = read16(&raw[0x56]);
-		m->maxHp = read16(&raw[0x58]);
-		if (m->species == 0 || m->maxHp == 0 || m->hp > m->maxHp || m->level > 100) {
-			return;
-		}
-		if (m->egg) {
-			snprintf(m->name, sizeof(m->name), "Egg");
-		} else {
-			decodeName(&raw[0x08], 10, m->name, sizeof(m->name));
-			speciesName(core, m->species, m->speciesName, sizeof(m->speciesName));
+		if (!decodeMember(core, raw, &party->members[slot])) {
+			return; /* hide the panel */
 		}
 	}
 	party->count = count;
-	party->valid = count > 0;
+	party->valid = true;
+}
+
+/* ---- Save file (Generation III flash layout) ----
+ * 128 KiB: two copies (slot A at 0x0000, slot B at 0xE000) of 14 sections
+ * of 4 KiB. Each section ends with: u16 id (0xFF4), u16 checksum, u32
+ * signature 0x08012025 (0xFF8), u32 save counter (0xFFC). The newest copy
+ * has the highest counter. Section 0 holds the trainer (name, play time),
+ * section 1 the party (FireRed/LeafGreen: count at 0x34, party at 0x38;
+ * Ruby/Sapphire/Emerald: 0x234 and 0x238). */
+bool pokemonReadSave(struct mCore* core, const char* gameCode, const uint8_t* sav, size_t size,
+                     struct Party* party, struct Trainer* trainer) {
+	memset(party, 0, sizeof(*party));
+	memset(trainer, 0, sizeof(*trainer));
+	if (!findLayout(gameCode) || size < 0x1C000) {
+		return false;
+	}
+	bool frlg = !strncmp(gameCode, "BPR", 3) || !strncmp(gameCode, "BPG", 3);
+	int best = -1;
+	uint32_t bestCounter = 0;
+	for (int slot = 0; slot < 2; ++slot) {
+		const uint8_t* sec = sav + slot * 0xE000;
+		if (read32(&sec[0xFF8]) != 0x08012025) {
+			continue;
+		}
+		uint32_t counter = read32(&sec[0xFFC]);
+		if (best < 0 || counter > bestCounter) {
+			best = slot;
+			bestCounter = counter;
+		}
+	}
+	if (best < 0) {
+		return false;
+	}
+	const uint8_t* s0 = NULL;
+	const uint8_t* s1 = NULL;
+	for (int i = 0; i < 14; ++i) {
+		const uint8_t* sec = sav + best * 0xE000 + i * 0x1000;
+		if (read32(&sec[0xFF8]) != 0x08012025) {
+			continue;
+		}
+		uint16_t id = read16(&sec[0xFF4]);
+		if (id == 0) {
+			s0 = sec;
+		} else if (id == 1) {
+			s1 = sec;
+		}
+	}
+	if (s0 && s0[0] != 0xFF && s0[0] != 0x00) {
+		decodeName(s0, 8, trainer->name, sizeof(trainer->name));
+		trainer->hours = read16(&s0[0x0E]);
+		trainer->minutes = s0[0x10];
+		trainer->valid = trainer->name[0] && trainer->hours < 1000 && trainer->minutes < 60;
+	}
+	if (!s1) {
+		return trainer->valid;
+	}
+	uint32_t count = read32(&s1[frlg ? 0x34 : 0x234]);
+	const uint8_t* list = &s1[frlg ? 0x38 : 0x238];
+	if (count == 0 || count > PARTY_MAX) {
+		return trainer->valid;
+	}
+	for (uint32_t i = 0; i < count; ++i) {
+		if (!decodeMember(core, list + i * 100, &party->members[i])) {
+			memset(party, 0, sizeof(*party));
+			return trainer->valid;
+		}
+	}
+	party->count = count;
+	party->valid = true;
+	return true;
 }
 
 const char* pokemonStatusLabel(const struct PartyMember* m) {

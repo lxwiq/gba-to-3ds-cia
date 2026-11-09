@@ -174,6 +174,9 @@ void uiDraw(struct UiState* ui) {
 		char who[64];
 		snprintf(who, sizeof(who), "%s   %u:%02u", ui->trainer.name, ui->trainer.hours, ui->trainer.minutes);
 		text(who, 8, 5, 0.5f, COL_TEXT, 0);
+		if (ui->fromSave) {
+			text("last save", W - 52, 7, 0.4f, COL_DIM, C2D_AlignRight);
+		}
 	} else {
 		text(ui->title, 8, 5, 0.5f, COL_TEXT, 0);
 	}
