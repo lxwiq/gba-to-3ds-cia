@@ -46,6 +46,9 @@ static struct UiState ui;
 static struct mCore* core;
 static color_t* outputBuffer;
 static C3D_Tex gameTex;
+/* The GX transfer (no vertical flip) writes GBA row 0 at v = 1.0 and row 159
+ * at v = 1 - 160/256. citro2d wants top > bottom (otherwise it treats the
+ * subtexture as rotated), which this is. Checked in the Azahar emulator. */
 static Tex3DS_SubTexture gameSub = { 240, 160, 0.0f, 1.0f, 240.0f / 256.0f, 1.0f - 160.0f / 256.0f };
 static C3D_RenderTarget* top;
 static C3D_RenderTarget* bottom;
@@ -371,8 +374,7 @@ static void uploadFrame(void) {
 	C3D_SyncDisplayTransfer((u32*) outputBuffer, GX_BUFFER_DIM(256, GBA_VIDEO_VERTICAL_PIXELS), gameTex.data,
 	                        GX_BUFFER_DIM(256, 256),
 	                        GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGB565) |
-	                            GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB565) | GX_TRANSFER_OUT_TILED(1) |
-	                            GX_TRANSFER_FLIP_VERT(1));
+	                            GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB565) | GX_TRANSFER_OUT_TILED(1));
 }
 
 static void applyScaleFilter(void) {

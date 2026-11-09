@@ -35,7 +35,7 @@ static const char* buttonLabel(const struct UiState* ui, int i, char* tmp, size_
 	switch (i) {
 	case 0: return "START";
 	case 1: return "SELECT";
-	case 2: snprintf(tmp, n, "SPEED %dx", ui->speed); return tmp;
+	case 2: snprintf(tmp, n, "%dx", ui->speed); return tmp;
 	case 3: return "SAVE";
 	case 4: return ui->loadArmed ? "SURE?" : "LOAD";
 	case 5:
@@ -189,7 +189,7 @@ void uiDraw(struct UiState* ui) {
 		C2D_DrawRectSolid(x, y, 0.3f, w, h, pressed ? COL_ACCENT : active ? COL_PANEL_HI : COL_BG);
 		C2D_DrawRectSolid(x, y + h - 2, 0.35f, w, 2, active ? COL_ACCENT : COL_LINE);
 		char tmp[16];
-		text(buttonLabel(ui, i, tmp, sizeof(tmp)), x + w / 2, y + h / 2 - 7, 0.42f,
+		text(buttonLabel(ui, i, tmp, sizeof(tmp)), x + w / 2, y + h / 2 - 6, 0.36f,
 		     pressed ? COL_BG : COL_TEXT, C2D_AlignCenter);
 	}
 }
