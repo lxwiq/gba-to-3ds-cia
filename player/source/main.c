@@ -787,7 +787,8 @@ int main(void) {
 			ui.fromSave = saveParty.valid || saveTrainer.valid;
 		}
 	}
-	testNoIcons = cfg.test;
+	/* Test screenshots never show game artwork, except the demo ROM's own. */
+	testNoIcons = cfg.test && strncmp(cfg.gameCode, "G2C", 3) != 0;
 
 	struct GBACartridgeOverride override = {
 		.savetype = cfg.saveType,

@@ -12,4 +12,9 @@ from the source code of makerom, 3dstool, bannertool, GodMode9 and
 open_agb_firm. No code from those projects is copied except the binary
 templates listed above.
 
+`assets/demo/gba2cia-demo.gba` is built from `player/demo` (MIT). Its graphics,
+names and map are original; its cartridge header is written by devkitPro's
+gbafix, as for any GBA homebrew. The screenshots in `docs/images` come from
+this demo.
+
 No game data is included in this repository.

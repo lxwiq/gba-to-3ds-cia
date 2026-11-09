@@ -19,6 +19,25 @@ the GBA hardware built into every 3DS and 2DS (GBA Virtual Console, AGB_FIRM).
 This project is a rewrite of [vcoven](https://github.com/vedoot/vcoven), whose
 injects install but never keep their saves. See [What was fixed](#what-was-fixed).
 
+## Screenshots
+
+Dual screen mode, running the built-in demo ROM (`assets/demo/gba2cia-demo.gba`,
+original graphics made for this project) in the Azahar emulator. The game
+fills the top screen; the bottom screen is a touch panel.
+
+<p align="center"><img src="docs/images/dual-screen.png" width="400" alt="Top screen with the game in full screen, bottom screen with the party page"></p>
+
+<p align="center"><img src="docs/images/top-screen.png" width="400" alt="Top screen alone, 400x240"></p>
+
+| TEAM | MAP |
+|:---:|:---:|
+| <img src="docs/images/bottom-team.png" width="320" alt="Party page: icon, name, level, HP, status"> | <img src="docs/images/bottom-map.png" width="320" alt="Map page: location, position and the explored area"> |
+| **CARD** | **TOOLS** |
+| <img src="docs/images/bottom-card.png" width="320" alt="Trainer card: name, ID, play time, money, badges"> | <img src="docs/images/bottom-tools.png" width="320" alt="Tools: START, SELECT, speed, save states, screen size"> |
+
+Virtual Console mode runs on the console's GBA hardware, which no emulator
+reproduces, so it has no screenshots here.
+
 Requirements: a 3DS, 2DS, New 3DS or New 2DS XL running custom firmware
 ([Luma3DS](https://github.com/LumaTeam/Luma3DS)), and
 [FBI](https://github.com/lifehackerhansol/FBI) to install the `.cia`.
@@ -316,6 +335,7 @@ The crate layout:
 | `crates/wasm` | WebAssembly bindings for the web app |
 | `web` | the web app (static files, no build step besides the WebAssembly module) |
 | `player` | the dual screen player (C, libctru, citro2d, mGBA core; `player/build.sh` rebuilds it in Docker) |
+| `player/demo` | the demo ROM: an original scene plus a fictional party, trainer and map, to show and test the player without a commercial game |
 
 Each build parses its own output again and verifies every hash before it is
 written, the same checks the console runs at install and launch.
