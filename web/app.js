@@ -24,6 +24,8 @@ const els = {
   patchCheck: $('patch-check'),
 
   colour: $('colour'),
+  scale: $('scale'),
+  startSavePicker: $('start-save-picker'),
 
   title: $('title'),
   publisher: $('publisher'),
@@ -658,7 +660,7 @@ function buildOptions() {
     titleId: els.titleId.value.replace(/\s+/g, ''),
     save: els.saveType.value,
     rtc: els.rtc.value,
-    scale: 'full',
+    scale: els.scale.value,
     colour: els.colour.value,
   };
 }
@@ -681,13 +683,14 @@ async function build() {
       return;
     }
 
-    const files = [state.rom.file, state.patch && state.patch.file, state.icon, state.banner, state.sound];
-    const [rom, patch, icon, banner, sound] = await Promise.all(files.map((f) => (f ? f.arrayBuffer() : null)));
     const options = buildOptions();
+    const startSave = options.mode === 'dual' ? state.startSave : null;
+    const files = [state.rom.file, state.patch && state.patch.file, state.icon, state.banner, state.sound, startSave];
+    const [rom, patch, icon, banner, sound, sav] = await Promise.all(files.map((f) => (f ? f.arrayBuffer() : null)));
     const result = await call(
       'build',
-      { rom, patch, icon, banner, sound, options },
-      [rom, patch, icon, banner, sound].filter(Boolean),
+      { rom, patch, icon, banner, sound, sav, options },
+      [rom, patch, icon, banner, sound, sav].filter(Boolean),
     );
 
     const name = `${safeFileName(result.report.title, 'game')}.cia`;
@@ -814,6 +817,7 @@ function wire() {
   picker(els.iconPicker, { empty: 'No image chosen', onFile: (file) => setImage('icon', file) });
   picker(els.bannerPicker, { empty: 'No image chosen', onFile: (file) => setImage('banner', file) });
   picker(els.soundPicker, { empty: 'No sound chosen', onFile: setSound });
+  picker(els.startSavePicker, { empty: 'No save chosen', onFile: (file) => { state.startSave = file; } });
   picker(els.savPicker, {
     empty: 'No save chosen',
     onFile: (file) => {

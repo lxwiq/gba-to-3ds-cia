@@ -77,11 +77,29 @@
             <p class="choice-tip">If you installed an older build of the same game made with another tool, delete that title and its save data first (FBI: Titles, select it, Delete Title and Delete Save Data), because the save container size is set at installation.</p>
           </div>
         </div>
-        <div class="choice is-disabled">
-          <input type="radio" name="mode" id="mode-dual" value="dual" disabled aria-describedby="mode-dual-soon mode-dual-desc">
+        <div class="choice">
+          <input type="radio" name="mode" id="mode-dual" value="dual" aria-describedby="mode-dual-soon mode-dual-desc">
           <div class="choice-body">
-            <label for="mode-dual" class="choice-title">Dual screen <span class="badge" id="mode-dual-soon">Coming soon</span></label>
-            <p class="choice-desc" id="mode-dual-desc">Game on the top screen, touch panel on the bottom screen. Runs in an emulator.</p>
+            <label for="mode-dual" class="choice-title">Dual screen <span class="badge" id="mode-dual-soon">Experimental</span></label>
+            <p class="choice-desc" id="mode-dual-desc">The game fills the top screen; the bottom screen is a touch panel with four pages: your party, a map of the places you have explored, your trainer card, and tools (START, SELECT, speed-up, quick save states, screen size). Runs in an emulator: full speed on New 3DS and New 2DS XL. The party, map and card pages work with Pokemon Ruby, Sapphire, Emerald, FireRed, LeafGreen and hacks built on them, such as Pokemon Unbound.</p>
+            <div class="field compact">
+              <label for="scale" class="label">Top screen</label>
+              <select id="scale">
+                <option value="full" selected>Full screen, 400x240 (default)</option>
+                <option value="aspect">Original proportions, 360x240</option>
+                <option value="native">Original size, 240x160</option>
+              </select>
+            </div>
+            <div class="field compact">
+              <span class="label" id="start-save-label">Starting save <span class="optional">optional</span></span>
+              <div class="file" id="start-save-picker">
+                <input type="file" id="start-save-file" class="visually-hidden" accept=".sav,.srm,.SaveRAM" aria-labelledby="start-save-label" aria-describedby="start-save-name start-save-hint">
+                <label for="start-save-file" class="button secondary">Choose save</label>
+                <span class="file-name" id="start-save-name" data-name>No save chosen</span>
+                <button type="button" class="link" data-clear aria-label="Remove the starting save" hidden>Remove</button>
+              </div>
+              <p class="hint" id="start-save-hint">An emulator .sav or .srm, installed the first time the game starts. Without one, the title looks for a save whose file name contains the game title anywhere on the SD card and copies it (the original is never changed). Saves are kept in /3ds/gba2cia/ on the SD card.</p>
+            </div>
           </div>
         </div>
       </fieldset>

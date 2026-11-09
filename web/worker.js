@@ -57,7 +57,7 @@ const ops = {
     }
   },
 
-  build({ rom, patch, options, icon, banner, sound }) {
+  build({ rom, patch, options, icon, banner, sound, sav }) {
     let data = bytes(rom);
     if (patch) data = core.applyPatch(data, bytes(patch));
     const built = core.buildCia(
@@ -66,7 +66,7 @@ const ops = {
       bytes(icon),
       bytes(banner),
       bytes(sound),
-      undefined,
+      bytes(sav),
     );
     data = null;
     try {

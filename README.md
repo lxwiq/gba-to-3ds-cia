@@ -169,29 +169,46 @@ LCD ghosting of Nintendo's own Virtual Console titles. Some games use
 flickering sprites that ghosting turns back into the transparency they had
 on a real GBA.
 
-### Dual screen mode (experimental, not yet tested on hardware)
+### Dual screen mode (experimental)
 
-`--mode dual` builds a different kind of title: the gba2cia player, a 3DS
-program built on the mGBA emulator core (`player/`), with the ROM bundled in
-it. It gives up AGB_FIRM's exact hardware for a dual-screen layout:
+`--mode dual` (or **Dual screen** in the web app) builds a different kind of
+title: the gba2cia player, a 3DS program built on the mGBA emulator core
+(`player/`), with the ROM bundled in it. It gives up AGB_FIRM's exact
+hardware for a dual-screen layout.
 
-- the game fills the top screen: 400x240 (`--scale full`), 360x240 (`aspect`)
-  or pixel for pixel (`native`), switchable from the bottom screen;
-- the bottom screen shows the party of Generation III Pokemon games and their
-  hacks (name, level, HP, status) and large touch buttons: START, SELECT,
-  speed-up (1x, 2x, 4x, also on X), quick save and load state, screen size;
-- the real-time clock follows the console clock;
-- the save is a plain emulator `.sav` on the SD card
-  (`sdmc:/3ds/gba2cia/<title id>/game.sav`), and `--sav` bundles a starting
-  save that is installed on first launch.
+- **Top screen:** the game fills it, at 400x240 (`--scale full`, the default),
+  360x240 (`aspect`) or pixel for pixel (`native`). The size can be changed on
+  the console.
+- **Bottom screen:** a touch panel with four pages.
+  - **TEAM:** the party, with icon, name, level, HP and status.
+  - **MAP:** the location name and a plan of the area around the player, drawn
+    from the map's collision data with doors, stairs and people. Only what the
+    player has already seen on the top screen is shown, so the plan never
+    spoils unexplored places.
+  - **CARD:** name, ID, play time, money and badges.
+  - **TOOLS:** START, SELECT, speed-up (1x, 2x, 4x, also on X), quick save and
+    load state, and the screen size.
+
+  TEAM, MAP and CARD work with Pokemon Ruby, Sapphire, Emerald, FireRed,
+  LeafGreen and ROM hacks built on them, Pokemon Unbound included.
+  TEAM and CARD use the save file as soon as the title starts.
+- **Saves:** the save is a plain emulator `.sav` kept in
+  `sdmc:/3ds/gba2cia/<title id>/game.sav`, with a backup of the previous one
+  (`game.sav.bak`). On the first launch, a save from another emulator whose
+  file name contains the game title is looked for on the SD card and copied
+  in; the original is never changed. `--sav` bundles a starting save instead.
+- **Clock:** the real-time clock follows the console clock.
 
 It runs at full speed on New 3DS and New 2DS XL; older models may slow down
 in demanding scenes. Sound needs the DSP firmware dump that every 3DS
 homebrew needs (Rosalina menu, Miscellaneous options, Dump DSP firmware).
 
 ```sh
-gba2cia build firered.gba --patch "Pokemon Unbound Official.ups" --mode dual --sav unbound.sav
+gba2cia build firered.gba --patch "Pokemon Unbound Official.ups" --mode dual
 ```
+
+The player is tested in the Azahar emulator with a headless libretro runner
+(`player/test`).
 
 ## Console notes
 
@@ -305,8 +322,7 @@ written, the same checks the console runs at install and launch.
 
 ## Roadmap
 
-- Dual-screen mode: testing in the Azahar emulator and on hardware, then in the
-  web app.
+- Dual-screen mode: bag and Pokedex pages, testing on more consoles.
 - Animated banners.
 
 ## Credits

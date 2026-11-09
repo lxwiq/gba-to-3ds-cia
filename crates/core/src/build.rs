@@ -248,7 +248,7 @@ pub fn build(rom: &[u8], opts: &BuildOptions) -> Result<BuildOutput, Error> {
                     let n = crate::save::normalize(sav, save)?;
                     notes.extend(n.notes);
                     notes.push(
-                        "The save file is installed on the SD card the first time the game starts (an existing save is never overwritten)."
+                        "The save file is installed on the SD card the first time the game starts, unless the title already has a save with data in it."
                             .into(),
                     );
                     Some(n.data)
